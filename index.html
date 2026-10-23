@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0f0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bilancio — Finanze personali</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0f0e; --panel:#121917; --panel2:#18211e; --line:#233029;
+  --ink:#e8f1ec; --ink2:#9db0a6; --ink3:#62756b;
+  --acc:#34d399; --acc-dim:rgba(52,211,153,.12);
+  --neg:#fb7185; --warn:#fbbf24;
+  --r:14px;
+  --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Manrope',system-ui,sans-serif;font-size:14px}
+body{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(150px + var(--sab))}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+button{font-family:inherit;color:inherit}
+
+/* masthead */
+.mast{position:sticky;top:0;z-index:20;background:rgba(11,15,14,.92);backdrop-filter:blur(12px);
+  padding:calc(12px + var(--sat)) 16px 10px;border-bottom:1px solid var(--line)}
+.mast-top{display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:17px}
+.brand i{width:22px;height:22px;border-radius:7px;background:var(--acc);display:grid;place-items:center}
+.brand i svg{width:13px;height:13px}
+.icon-btn{background:none;border:1px solid var(--line);width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink2);cursor:pointer}
+.icon-btn svg{width:17px;height:17px}
+.period{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
+.yr{display:flex;align-items:center;gap:6px;font-weight:700}
+.yr button{background:none;border:none;color:var(--ink2);font-size:18px;padding:2px 6px;cursor:pointer}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-top:8px;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:none;color:var(--ink2);padding:6px 11px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#04130c}
+
+/* layout */
+.view{display:none;padding:14px 16px}
+.view.on{display:block}
+h2.sec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin:22px 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi small{display:block;color:var(--ink3);font-size:11px;font-weight:600;margin-bottom:4px}
+.kpi b{font-size:19px;font-weight:700}
+.hero{background:linear-gradient(160deg,#143028,#0f1a17 60%);border-color:#1f4a3b}
+.hero small{color:#7fcfae}
+.hero b{font-size:30px;letter-spacing:-.02em}
+.pos{color:var(--acc)} .neg{color:var(--neg)} .mut{color:var(--ink3)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.empty{color:var(--ink3);text-align:center;padding:26px 10px;font-size:13px}
+
+/* bars list */
+.bl{display:flex;flex-direction:column;gap:11px}
+.bl-i .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+.bl-i .top span:first-child{font-weight:600}
+.bar{height:6px;border-radius:9px;background:var(--panel2);overflow:hidden}
+.bar>div{height:100%;border-radius:9px}
+
+/* donut */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut{position:relative;width:128px;height:128px;flex:none}
+.donut svg{width:100%;height:100%;transform:rotate(-90deg)}
+.donut .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-size:10px;color:var(--ink3);font-weight:600}
+.donut .c b{display:block;font-size:14px;color:var(--ink)}
+.legend{flex:1;display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0}
+.legend div{display:flex;align-items:center;gap:7px}
+.legend i{width:9px;height:9px;border-radius:3px;flex:none}
+.legend span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* movimenti */
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:3px;gap:3px}
+.seg button{flex:1;background:none;border:none;padding:8px 6px;border-radius:8px;font-weight:700;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--panel2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.seg button.on.u{color:var(--neg)} .seg button.on.e{color:var(--acc)}
+input,select,textarea{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:11px;padding:11px 12px;font-family:inherit;font-size:15px;outline:none}
+input:focus,select:focus{border-color:var(--acc)}
+.search{margin:10px 0}
+.day{font-size:11px;color:var(--ink3);font-weight:700;margin:16px 2px 6px;letter-spacing:.05em}
+.tx{display:flex;align-items:center;gap:12px;padding:11px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;cursor:pointer}
+.tx .dot{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;font-weight:800;font-size:13px}
+.tx .mid{flex:1;min-width:0}
+.tx .mid b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .mid small{color:var(--ink3);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.fab{position:fixed;right:max(16px,calc(50% - 244px));bottom:calc(84px + var(--sab));width:54px;height:54px;border-radius:17px;border:none;background:var(--acc);color:#04130c;font-size:28px;font-weight:600;box-shadow:0 8px 24px rgba(52,211,153,.35);cursor:pointer;z-index:15;display:none}
+.fab.on{display:block}
+
+/* matrix */
+.mx-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);max-height:68vh}
+table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-content}
+.mx th,.mx td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+.mx th{position:sticky;top:0;background:var(--panel2);color:var(--ink3);font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;z-index:2}
+.mx td:first-child,.mx th:first-child{position:sticky;left:0;text-align:left;background:var(--panel);z-index:1;min-width:128px;max-width:150px;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--line)}
+.mx th:first-child{background:var(--panel2);z-index:3}
+.mx tr.grp td{background:var(--panel2);font-weight:700}
+.mx tr.grp td:first-child{background:var(--panel2)}
+.mx tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
+.mx td.z{color:#33443b}
+.mx tr.tot td{font-weight:800;border-top:2px solid var(--line)}
+.mx td.t{font-weight:700;background:var(--panel2)}
+
+/* lists */
+.acct{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.acct:last-child{border:none}
+.gh{display:flex;justify-content:space-between;align-items:baseline;margin:20px 2px 6px}
+.gh b{font-size:13px} .gh span{font-size:13px;color:var(--ink2)}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--acc-dim);color:var(--acc)}
+.btn{background:var(--acc);color:#04130c;border:none;border-radius:11px;padding:12px 16px;font-weight:800;font-size:14px;cursor:pointer;width:100%}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--ink2)}
+.btn.danger{background:none;border:1px solid #4a2430;color:var(--neg)}
+.btn.sm{padding:7px 11px;font-size:12px;width:auto;border-radius:9px}
+.rate{margin-bottom:8px}
+.rate .row{margin-bottom:8px}
+.inv-r{display:grid;grid-template-columns:1fr 62px 62px 52px;gap:6px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:12px}
+.inv-r.h{color:var(--ink3);font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.inv-r div:not(:first-child){text-align:right}
+.l1{padding-left:12px;color:var(--ink2)} .l2{padding-left:24px;color:var(--ink3);font-size:11.5px}
+.pl-bars{display:flex;align-items:center;gap:3px;height:90px;margin-top:10px}
+.pl-bars div{flex:1;border-radius:3px;min-height:2px}
+
+/* bottom nav */
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:30;
+  background:rgba(11,15,14,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  display:flex;padding:7px 6px calc(7px + var(--sab))}
+nav button{flex:1;background:none;border:none;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:5px 0;cursor:pointer}
+nav button svg{width:21px;height:21px}
+nav button.on{color:var(--acc)}
+
+/* sheet */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.ov.on{display:flex}
+.sheet{background:#0f1513;border:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:520px;max-height:92vh;overflow:auto;padding:18px 16px calc(20px + var(--sab))}
+.sheet h3{margin:0 0 14px;font-size:17px}
+.f{margin-bottom:12px}
+.f label{display:block;font-size:11px;font-weight:700;color:var(--ink3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+.amt{font-size:28px;font-weight:700;text-align:center;font-family:'JetBrains Mono',monospace}
+.toast{position:fixed;left:50%;bottom:calc(92px + var(--sab));transform:translateX(-50%);background:var(--acc);color:#04130c;padding:9px 16px;border-radius:99px;font-weight:700;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+.note{font-size:12px;color:var(--ink3);line-height:1.5}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-top">
+    <div class="brand"><i><svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg></i><span id="mast-title">Bilancio</span></div>
+    <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+  </div>
+  <div id="period-bar">
+    <div class="period">
+      <div class="yr"><button onclick="setYear(-1)">‹</button><span id="yr-label" class="mono"></span><button onclick="setYear(1)">›</button></div>
+      <span class="note" id="period-note"></span>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<main>
+  <section class="view on" id="v-home"></section>
+  <section class="view" id="v-mov"></section>
+  <section class="view" id="v-mx"></section>
+  <section class="view" id="v-pat"></section>
+  <section class="view" id="v-altro"></section>
+</main>
+
+<button class="fab" id="fab" onclick="openTx()" aria-label="Nuovo movimento">+</button>
+
+<nav id="nav">
+  <button data-t="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Panoramica</button>
+  <button data-t="mov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Movimenti</button>
+  <button data-t="mx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mensile</button>
+  <button data-t="pat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>Patrimonio</button>
+  <button data-t="altro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>Altro</button>
+</nav>
+
+<div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+
+/* ============ STORAGE ============
+   Per ora localStorage. Quando colleghiamo Firebase basta sostituire
+   store.get / store.set (stessa idea di storageGet/storageSet dell'app gommone). */
+const KEY = 'bilancio:v1';
+const store = {
+  get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
+  set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} }
+};
+
+const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const M3 = MESI.map(m=>m.slice(0,3));
+const PAL = ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#a3e635','#94a3b8','#f87171'];
+
+let S = store.get() || buildSeed();
+const now = new Date();
+const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', plMonth: now.getMonth() };
+
+function buildSeed(){ return { tx:[], conti:[], rate:[], inv:[], trading:[] }; }
+function save(){ store.set(S); }
+
+/* ============ UTILS ============ */
+const eur = (v,d=2) => (v<0?'-':'') + Math.abs(v).toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d}) + ' €';
+const eur0 = v => eur(v, Math.abs(v)>=1000 ? 0 : 2);
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const uid = () => 'x'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const sum = a => a.reduce((x,y)=>x+y,0);
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1600); }
+const txYear = t => +t.d.slice(0,4);
+const txMonth = t => +t.d.slice(5,7)-1;
+function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
+function periodTx(){ return S.tx.filter(inPeriod); }
+function periodLabel(){ return ui.month==='all' ? `Anno ${ui.year}` : `${MESI[ui.month]} ${ui.year}`; }
+function groupBy(arr, fn){ const m = new Map(); arr.forEach(x=>{ const k=fn(x); m.set(k,(m.get(k)||0)+x.amt); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
+
+/* ============ NAV / PERIODO ============ */
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+function showTab(t){
+  ui.tab=t;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+t));
+  $('fab').classList.toggle('on', t==='home'||t==='mov');
+  $('chips').style.display = (t==='home'||t==='mov') ? 'flex' : 'none';
+  $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',altro:'Altro'}[t];
+  $('period-bar').style.display = (t==='pat') ? 'none' : 'block';
+  render(); window.scrollTo(0,0);
+}
+function setYear(d){ ui.year+=d; render(); }
+function setMonth(m){ ui.month=m; render(); }
+function renderChips(){
+  const items = [['all','Anno'], ...MESI.map((m,i)=>[i,M3[i]])];
+  $('chips').innerHTML = items.map(([v,l])=>`<button class="chip ${ui.month===v?'on':''}" onclick="setMonth(${typeof v==='number'?v:"'all'"})">${l}</button>`).join('');
+  $('yr-label').textContent = ui.year;
+  $('period-note').textContent = (ui.tab==='home'||ui.tab==='mov') ? periodLabel() : '';
+}
+
+/* ============ RENDER ============ */
+function render(){
+  renderChips();
+  ({home:renderHome, mov:renderMov, mx:renderMx, pat:renderPat, altro:renderAltro})[ui.tab]();
+}
+
+/* ---- Panoramica ---- */
+function donut(data){
+  const tot = sum(data.map(d=>d[1])) || 1; const R=48, C=2*Math.PI*R; let off=0;
+  const arcs = data.map(([k,v],i)=>{ const len=v/tot*C; const s=`<circle cx="64" cy="64" r="${R}" fill="none" stroke="${PAL[i%PAL.length]}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}"/>`; off+=len; return s; }).join('');
+  return `<div class="donut"><svg viewBox="0 0 128 128"><circle cx="64" cy="64" r="${R}" fill="none" stroke="#18211e" stroke-width="16"/>${arcs}</svg><div class="c"><div><b class="mono">${eur0(tot)}</b>uscite</div></div></div>`;
+}
+function renderHome(){
+  const p = periodTx(); const U = p.filter(t=>t.t==='u'), E = p.filter(t=>t.t==='e');
+  const tu = sum(U.map(t=>t.amt)), te = sum(E.map(t=>t.amt)), saldo = te-tu;
+  const patr = sum(S.conti.map(c=>c.v)), liq = sum(S.conti.filter(c=>c.g!=='Investimenti').map(c=>c.v));
+  const byCat = groupBy(U, t=>t.cat);
+  const bySub = groupBy(U, t=>t.cat + (t.sub?' › '+t.sub:'')).slice(0,8);
+  const yU = Array(12).fill(0), yE = Array(12).fill(0);
+  S.tx.filter(t=>txYear(t)===ui.year).forEach(t=>{ (t.t==='u'?yU:yE)[txMonth(t)] += t.amt; });
+  const mx = Math.max(1,...yU,...yE);
+  const bars = M3.map((m,i)=>`<div style="flex:1;text-align:center;cursor:pointer" onclick="setMonth(${i})">
+      <div style="display:flex;gap:2px;align-items:flex-end;height:90px;justify-content:center">
+        <div style="width:6px;height:${yE[i]/mx*100}%;background:var(--acc);border-radius:3px;min-height:2px;opacity:${ui.month===i||ui.month==='all'?1:.35}"></div>
+        <div style="width:6px;height:${yU[i]/mx*100}%;background:var(--neg);border-radius:3px;min-height:2px;opacity:${ui.month===i||ui.month==='all'?1:.35}"></div>
+      </div><div style="font-size:9px;color:var(--ink3);margin-top:5px;font-weight:700">${m[0]}</div></div>`).join('');
+  const maxSub = bySub[0]?bySub[0][1]:1;
+  $('v-home').innerHTML = `
+    <div class="card hero kpi"><small>Saldo ${periodLabel().toLowerCase()}</small><b class="mono ${saldo<0?'neg':''}">${eur(saldo)}</b>
+      <div class="row" style="margin-top:14px">
+        <div><small>Entrate</small><b class="mono pos" style="font-size:16px">${eur0(te)}</b></div>
+        <div style="text-align:right"><small>Uscite</small><b class="mono neg" style="font-size:16px">${eur0(tu)}</b></div>
+      </div></div>
+    <div class="grid2" style="margin-top:10px">
+      <div class="card kpi" onclick="showTab('pat')"><small>Liquidità</small><b class="mono">${eur0(liq)}</b></div>
+      <div class="card kpi" onclick="showTab('pat')"><small>Patrimonio</small><b class="mono">${eur0(patr)}</b></div>
+    </div>
+    <h2 class="sec">Uscite per categoria</h2>
+    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono" style="font-size:11px">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div>
+    <h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
+    <div class="card"><div style="display:flex;gap:2px">${bars}</div>
+      <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div>
+    <h2 class="sec">Voci che pesano di più</h2>
+    <div class="card">${bySub.length ? `<div class="bl">${bySub.map(([k,v],i)=>`<div class="bl-i"><div class="top"><span>${esc(k)}</span><span class="mono">${eur0(v)}</span></div><div class="bar"><div style="width:${v/maxSub*100}%;background:${PAL[i%PAL.length]}"></div></div></div>`).join('')}</div>` : '<div class="empty">—</div>'}</div>`;
+}
+
+/* ---- Movimenti ---- */
+function renderMov(){
+  let list = periodTx();
+  if(ui.tipo!=='all') list = list.filter(t=>t.t===ui.tipo);
+  const q = ui.q.trim().toLowerCase();
+  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+t.note).toLowerCase().includes(q));
+  list.sort((a,b)=> b.d.localeCompare(a.d) || a.cat.localeCompare(b.cat));
+  const tu = sum(list.filter(t=>t.t==='u').map(t=>t.amt)), te = sum(list.filter(t=>t.t==='e').map(t=>t.amt));
+  let html = `<div class="seg">
+      ${[['all','Tutti',''],['u','Uscite','u'],['e','Entrate','e']].map(([v,l,c])=>`<button class="${c} ${ui.tipo===v?'on':''}" onclick="ui.tipo='${v}';render()">${l}</button>`).join('')}
+    </div>
+    <input class="search" id="q" placeholder="Cerca categoria, voce o nota…" value="${esc(ui.q)}" oninput="ui.q=this.value;renderMovList()">
+    <div class="row note" style="margin:0 2px"><span>${list.length} movimenti</span><span class="mono"><span class="pos">+${eur0(te)}</span> · <span class="neg">-${eur0(tu)}</span></span></div>
+    <div id="mov-list"></div>`;
+  $('v-mov').innerHTML = html;
+  renderMovList();
+}
+function renderMovList(){
+  let list = periodTx();
+  if(ui.tipo!=='all') list = list.filter(t=>t.t===ui.tipo);
+  const q = ui.q.trim().toLowerCase();
+  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+t.note).toLowerCase().includes(q));
+  list.sort((a,b)=> b.d.localeCompare(a.d) || a.cat.localeCompare(b.cat));
+  if(!list.length){ $('mov-list').innerHTML='<div class="empty">Nessun movimento.<br>Tocca + per aggiungerne uno.</div>'; return; }
+  const colorOf = c => PAL[Math.abs([...c].reduce((a,ch)=>a+ch.charCodeAt(0),0))%PAL.length];
+  let cur='', out='';
+  list.forEach(t=>{
+    const head = `${+t.d.slice(8,10)} ${MESI[txMonth(t)]} ${txYear(t)}`;
+    if(head!==cur){ cur=head; out+=`<div class="day">${head.toUpperCase()}</div>`; }
+    const c = colorOf(t.cat);
+    out += `<div class="tx" onclick="openTx('${t.id}')">
+      <div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>
+      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
+      <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
+  });
+  $('mov-list').innerHTML = out;
+}
+
+/* ---- Mensile (come la tabella Contabilità di Numbers) ---- */
+function renderMx(){
+  const tipo = ui.mxTipo;
+  const tx = S.tx.filter(t=>t.t===tipo && txYear(t)===ui.year);
+  const cats = new Map();
+  tx.forEach(t=>{
+    if(!cats.has(t.cat)) cats.set(t.cat,{m:Array(12).fill(0),subs:new Map()});
+    const c = cats.get(t.cat); c.m[txMonth(t)]+=t.amt;
+    const sk = t.sub||'—';
+    if(!c.subs.has(sk)) c.subs.set(sk,Array(12).fill(0));
+    c.subs.get(sk)[txMonth(t)]+=t.amt;
+  });
+  const order = [...cats.entries()].sort((a,b)=>sum(b[1].m)-sum(a[1].m));
+  const cell = v => v ? `<td class="mono">${v.toLocaleString('it-IT',{maximumFractionDigits:0})}</td>` : `<td class="z mono">·</td>`;
+  const tot = Array(12).fill(0); order.forEach(([k,c])=>c.m.forEach((v,i)=>tot[i]+=v));
+  let rows='';
+  order.forEach(([k,c])=>{
+    rows+=`<tr class="grp"><td>${esc(k)}</td>${c.m.map(cell).join('')}<td class="mono t">${sum(c.m).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>`;
+    if(c.subs.size>1 || ![...c.subs.keys()].includes('—'))
+      [...c.subs.entries()].sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([s,m])=>{
+        rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${sum(m).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>`;
+      });
+  });
+  $('v-mx').innerHTML = `
+    <div class="seg" style="margin-bottom:12px">
+      <button class="u ${tipo==='u'?'on':''}" onclick="ui.mxTipo='u';render()">Uscite</button>
+      <button class="e ${tipo==='e'?'on':''}" onclick="ui.mxTipo='e';render()">Entrate</button>
+    </div>
+    <div class="mx-wrap"><table class="mx">
+      <tr><th>${tipo==='u'?'Uscite':'Entrate'} ${ui.year}</th>${M3.map(m=>`<th>${m}</th>`).join('')}<th>Totale</th></tr>
+      <tr class="tot"><td>Totale mese</td>${tot.map(cell).join('')}<td class="mono t">${sum(tot).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>
+      ${rows || '<tr><td colspan="14" class="empty">Nessun dato per questo anno</td></tr>'}
+    </table></div>
+    <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. Scorri a destra per vedere tutti i mesi.</p>`;
+}
+
+/* ---- Patrimonio ---- */
+function renderPat(){
+  const groups = ['Banche','Cash','Investimenti'];
+  const patr = sum(S.conti.map(c=>c.v)), liq = sum(S.conti.filter(c=>c.g!=='Investimenti').map(c=>c.v));
+  let html = `<div class="card hero kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
+    <div class="row" style="margin-top:14px"><div><small>Liquidità</small><b class="mono" style="font-size:16px">${eur(liq,0)}</b></div>
+    <div style="text-align:right"><small>Investimenti</small><b class="mono" style="font-size:16px">${eur(patr-liq,0)}</b></div></div></div>`;
+  groups.forEach(g=>{
+    const items = S.conti.filter(c=>c.g===g);
+    html += `<div class="gh"><b>${g}</b><span class="mono">${eur(sum(items.map(c=>c.v)),0)}</span></div><div class="card" style="padding:4px 14px">
+      ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span>${esc(c.n)}</span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div>`;
+  });
+  html += `<button class="btn ghost" style="margin-top:18px" onclick="openConto()">+ Aggiungi conto</button>`;
+  $('v-pat').innerHTML = html;
+}
+function openConto(id){
+  const c = id ? S.conti.find(x=>x.id===id) : {g:'Banche',n:'',v:0};
+  sheet(`<h3>${id?'Modifica conto':'Nuovo conto'}</h3>
+    <div class="f"><label>Gruppo</label><select id="c-g">${['Banche','Cash','Investimenti'].map(g=>`<option ${c.g===g?'selected':''}>${g}</option>`).join('')}</select></div>
+    <div class="f"><label>Nome</label><input id="c-n" value="${esc(c.n)}" placeholder="es. ING"></div>
+    <div class="f"><label>Saldo</label><input id="c-v" inputmode="decimal" class="amt" value="${c.v||''}" placeholder="0"></div>
+    <button class="btn" onclick="saveConto('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delConto('${id}')">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+const num = s => parseFloat(String(s).replace(',','.')) || 0;
+function saveConto(id){
+  const o = {g:$('c-g').value, n:$('c-n').value.trim(), v:num($('c-v').value)};
+  if(!o.n) return toast('Inserisci un nome');
+  if(id) Object.assign(S.conti.find(x=>x.id===id),o); else S.conti.push({id:uid(),...o});
+  save(); closeSheet(); render(); toast('Salvato');
+}
+function delConto(id){ S.conti=S.conti.filter(x=>x.id!==id); save(); closeSheet(); render(); }
+
+/* ---- Altro: Rate / Investimenti / Trading ---- */
+function renderAltro(){
+  const tabs = [['rate','Rate'],['inv','Investimenti'],['trading','Trading']];
+  let body='';
+  if(ui.altro==='rate'){
+    const tot = sum(S.rate.map(r=>r.rata*r.res)), mensile = sum(S.rate.filter(r=>r.res>0).map(r=>r.rata));
+    body = `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(mensile)}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(tot)}</b></div></div>
+      <h2 class="sec">Rate attive</h2>` +
+      (S.rate.filter(r=>r.res>0).map(r=>`<div class="card rate"><div class="row"><div><b>${esc(r.prod&&r.prod!=='-'?r.prod:r.tipo)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.res} rate</div></div><b class="mono">${eur(r.rata*r.res)}</b></div>
+        <div class="row"><span class="pill">${r.res} residue</span><div style="display:flex;gap:6px"><button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button><button class="btn sm" onclick="payRata('${r.id}')">Rata pagata</button></div></div></div>`).join('') || '<div class="empty">Nessuna rata attiva 🎉</div>') +
+      `<button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>`;
+  } else if(ui.altro==='inv'){
+    const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
+    const ti = sum(top.map(r=>r.inv||0)), te = sum(top.map(r=>r.eff||0));
+    body = `<div class="grid2"><div class="card kpi"><small>Investito</small><b class="mono">${eur(ti,0)}</b></div><div class="card kpi"><small>Valore attuale</small><b class="mono">${eur(te,0)}</b></div></div>
+      <div class="card kpi" style="margin-top:10px"><small>Rendimento totale</small><b class="mono ${te>=ti?'pos':'neg'}">${te>=ti?'+':''}${((te-ti)/(ti||1)*100).toFixed(1)}%  ·  ${te>=ti?'+':''}${eur(te-ti,0)}</b></div>
+      <h2 class="sec">Dettaglio</h2><div class="card" style="padding:4px 12px">
+      <div class="inv-r h"><div>Voce</div><div>Inv.</div><div>Attuale</div><div>%</div></div>
+      ${rows.map(r=>{ const p = r.inv>0&&r.eff!=null ? (r.eff-r.inv)/r.inv*100 : null;
+        return `<div class="inv-r"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}</div><div class="mono">${r.inv?Math.round(r.inv):'–'}</div><div class="mono">${r.eff!=null?Math.round(r.eff):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('')}</div>
+      <p class="note" style="margin-top:10px">Il rendimento % qui è ricalcolato da investito/attuale (nel foglio alcune celle % non coincidono con i valori).</p>`;
+  } else {
+    const m = ui.plMonth; const list = S.trading.filter(t=>+t.d.slice(0,4)===ui.year && +t.d.slice(5,7)-1===m).sort((a,b)=>a.d.localeCompare(b.d));
+    const tot = sum(list.map(t=>t.v)); const mx = Math.max(1,...list.map(t=>Math.abs(t.v)));
+    const yr = sum(S.trading.filter(t=>+t.d.slice(0,4)===ui.year).map(t=>t.v));
+    body = `<div class="chips" style="margin:0 0 10px">${MESI.map((x,i)=>`<button class="chip ${m===i?'on':''}" onclick="ui.plMonth=${i};render()">${M3[i]}</button>`).join('')}</div>
+      <div class="grid2"><div class="card kpi"><small>P&L ${M3[m]}</small><b class="mono ${tot<0?'neg':tot>0?'pos':''}">${eur(tot)}</b></div><div class="card kpi"><small>P&L ${ui.year}</small><b class="mono ${yr<0?'neg':yr>0?'pos':''}">${eur(yr)}</b></div></div>
+      <div class="card" style="margin-top:10px">${list.length?`<div class="pl-bars">${list.map(t=>`<div style="height:${Math.abs(t.v)/mx*100}%;background:${t.v>=0?'var(--acc)':'var(--neg)'}"></div>`).join('')}</div>`:'<div class="empty">Nessun giorno registrato</div>'}</div>
+      <h2 class="sec">Aggiungi giornata</h2>
+      <div class="grid2"><input type="date" id="pl-d" value="${now.toISOString().slice(0,10)}"><input id="pl-v" inputmode="decimal" placeholder="P&L es. -120,50"></div>
+      <button class="btn" style="margin-top:8px" onclick="addPL()">Aggiungi</button>
+      <div style="margin-top:14px">${list.slice().reverse().map(t=>`<div class="tx" onclick="delPL('${t.id}')"><div class="mid"><b>${+t.d.slice(8,10)} ${MESI[m]}</b><small>tocca per eliminare</small></div><b class="mono ${t.v>=0?'pos':'neg'}">${t.v>0?'+':''}${eur(t.v)}</b></div>`).join('')}</div>`;
+  }
+  $('v-altro').innerHTML = `<div class="seg" style="margin-bottom:14px">${tabs.map(([v,l])=>`<button class="${ui.altro===v?'on':''}" onclick="ui.altro='${v}';render()">${l}</button>`).join('')}</div>` + body;
+}
+function payRata(id){ const r=S.rate.find(x=>x.id===id); r.res=Math.max(0,r.res-1); save(); render(); toast('Rata segnata come pagata'); }
+function openRata(id){
+  const r = id ? S.rate.find(x=>x.id===id) : {tipo:'PayPal',prod:'',rata:0,res:1};
+  sheet(`<h3>${id?'Modifica rata':'Nuova rata'}</h3>
+    <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(r.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>Scalapay<option>Carta di credito<option>Aliexpress</datalist></div>
+    <div class="f"><label>Prodotto</label><input id="r-p" value="${esc(r.prod==='-'?'':r.prod)}"></div>
+    <div class="grid2"><div class="f"><label>Importo rata</label><input id="r-r" inputmode="decimal" value="${r.rata||''}"></div><div class="f"><label>Rate residue</label><input id="r-n" inputmode="numeric" value="${r.res}"></div></div>
+    <button class="btn" onclick="saveRata('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="S.rate=S.rate.filter(x=>x.id!=='${id}');save();closeSheet();render()">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+function saveRata(id){
+  const o={tipo:$('r-t').value.trim()||'PayPal',prod:$('r-p').value.trim(),rata:num($('r-r').value),res:Math.max(0,parseInt($('r-n').value)||0)};
+  if(!o.rata) return toast('Inserisci l\'importo');
+  if(id) Object.assign(S.rate.find(x=>x.id===id),o); else S.rate.push({id:uid(),...o});
+  save(); closeSheet(); render(); toast('Salvato');
+}
+function addPL(){ const d=$('pl-d').value, v=num($('pl-v').value); if(!d||$('pl-v').value==='') return toast('Data e valore'); S.trading.push({id:uid(),d,v}); save(); ui.plMonth=+d.slice(5,7)-1; render(); }
+function delPL(id){ S.trading=S.trading.filter(t=>t.id!==id); save(); render(); }
+
+/* ============ MOVIMENTO (modal) ============ */
+function catMap(tipo){
+  const m = new Map();
+  S.tx.filter(t=>t.t===tipo).forEach(t=>{ if(!m.has(t.cat)) m.set(t.cat,new Set()); if(t.sub) m.get(t.cat).add(t.sub); });
+  return m;
+}
+let draftT = 'u';
+function openTx(id){
+  const t = id ? S.tx.find(x=>x.id===id) : {t:draftT, d:new Date().toISOString().slice(0,10), cat:'', sub:'', amt:'', note:''};
+  if(!id && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
+    t.d = `${ui.year}-${String(ui.month+1).padStart(2,'0')}-01`;
+  }
+  sheet(`<h3>${id?'Modifica movimento':'Nuovo movimento'}</h3>
+    <div class="seg" style="margin-bottom:14px" id="tx-seg">
+      <button class="u ${t.t==='u'?'on':''}" onclick="setTxT('u')">Uscita</button>
+      <button class="e ${t.t==='e'?'on':''}" onclick="setTxT('e')">Entrata</button></div>
+    <input type="hidden" id="t-t" value="${t.t}">
+    <div class="f"><input id="t-a" class="amt" inputmode="decimal" placeholder="0,00" value="${t.amt}"></div>
+    <div class="grid2">
+      <div class="f"><label>Data</label><input type="date" id="t-d" value="${t.d}"></div>
+      <div class="f"><label>Categoria</label><select id="t-c" onchange="catChange()"></select></div>
+    </div>
+    <div class="f" id="t-newc-w" style="display:none"><label>Nuova categoria</label><input id="t-newc" placeholder="es. Salute"></div>
+    <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
+    <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
+    <button class="btn" onclick="saveTx('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delTx('${id}')">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+  fillCats(t.cat);
+  if(!id) setTimeout(()=>$('t-a').focus(),120);
+}
+function setTxT(v){
+  $('t-t').value=v; draftT=v;
+  document.querySelectorAll('#tx-seg button').forEach(b=>b.classList.toggle('on',b.classList.contains(v)));
+  fillCats('');
+}
+function fillCats(sel){
+  const tipo=$('t-t').value; const m=catMap(tipo);
+  $('t-c').innerHTML = [...m.keys()].sort().map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('') + '<option value="__new">+ Nuova categoria…</option>';
+  if(sel && !m.has(sel)){ $('t-c').value='__new'; $('t-newc').value=sel; }
+  catChange();
+}
+function catChange(){
+  const v=$('t-c').value; $('t-newc-w').style.display = v==='__new'?'block':'none';
+  const subs = v==='__new' ? [] : [...(catMap($('t-t').value).get(v)||[])].sort();
+  $('t-sl').innerHTML = subs.map(s=>`<option value="${esc(s)}">`).join('');
+}
+function saveTx(id){
+  const o = { t:$('t-t').value, amt:num($('t-a').value), d:$('t-d').value,
+    cat: $('t-c').value==='__new' ? $('t-newc').value.trim() : $('t-c').value, sub:$('t-s').value.trim(), note:$('t-n').value.trim() };
+  if(!o.amt) return toast('Inserisci un importo');
+  if(!o.cat) return toast('Scegli una categoria');
+  if(!o.d) return toast('Inserisci la data');
+  if(id) Object.assign(S.tx.find(x=>x.id===id),o); else S.tx.push({id:uid(),...o});
+  save(); closeSheet(); render(); toast('Movimento salvato');
+}
+function delTx(id){ S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato'); }
+
+/* ============ IMPOSTAZIONI ============ */
+function openSettings(){
+  sheet(`<h3>Dati e backup</h3>
+    <p class="note">I dati restano solo in questo browser. Con Firebase + login Google si sincronizzeranno.</p>
+    <h2 class="sec" style="margin-top:16px">Importa da CSV</h2>
+    <div class="f"><label>Che dati sono?</label><select id="csv-k">
+      <option value="mov">Movimenti (data;tipo;categoria;voce;importo;nota)</option>
+      <option value="conti">Conti (gruppo;nome;saldo)</option>
+      <option value="rate">Rate (metodo;prodotto;rata;residue)</option>
+      <option value="inv">Investimenti (voce;livello;investito;attuale)</option>
+      <option value="trading">Trading P&L (data;importo)</option></select></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px"><input type="checkbox" id="csv-rep" style="width:auto"> Sostituisci i dati esistenti di questo tipo</label>
+    <label class="btn" style="display:block;text-align:center;cursor:pointer">Scegli file CSV<input type="file" accept=".csv,.txt" hidden onchange="importCSV(this.files[0])"></label>
+    <h2 class="sec">Backup</h2>
+    <button class="btn ghost" onclick="exportJSON()">Esporta backup (.json)</button>
+    <label class="btn ghost" style="display:block;text-align:center;margin-top:8px;cursor:pointer">Importa backup (.json)<input type="file" accept=".json" hidden onchange="importJSON(this.files[0])"></label>
+    <button class="btn danger" style="margin-top:8px" onclick="if(confirm('Cancellare TUTTI i dati di questa app?')){S=buildSeed();save();closeSheet();render();toast('Dati cancellati')}">Cancella tutti i dati</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
+}
+/* ---- CSV ---- */
+function parseCSV(txt){
+  txt = txt.replace(/^\uFEFF/,'');
+  const first = txt.split(/\r?\n/)[0]||'';
+  const del = (first.match(/;/g)||[]).length >= (first.match(/,/g)||[]).length ? ';' : ',';
+  const rows=[]; let row=[], cur='', q=false;
+  for(let i=0;i<txt.length;i++){
+    const c=txt[i];
+    if(q){ if(c==='"'){ if(txt[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===del){ row.push(cur); cur=''; }
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&txt[i+1]==='\n') i++; row.push(cur); cur=''; if(row.some(x=>x.trim()!=='')) rows.push(row); row=[]; }
+    else cur+=c;
+  }
+  row.push(cur); if(row.some(x=>x.trim()!=='')) rows.push(row);
+  return rows.map(r=>r.map(x=>x.trim()));
+}
+const csvNum = v => { if(v==null||String(v).trim()==='') return null; let x=String(v).replace(/[€\s]/g,''); if(x.includes(',')) x=x.replace(/\./g,'').replace(',','.'); const n=parseFloat(x); return isNaN(n)?null:n; };
+function csvDate(v){
+  v=String(v||'').trim(); let m;
+  if((m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  if((m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/))) return `${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return null;
+}
+function importCSV(f){
+  if(!f) return;
+  const kind=$('csv-k').value, rep=$('csv-rep').checked;
+  const r=new FileReader();
+  r.onload=()=>{
+    let rows=parseCSV(r.result), skipped=0, out=[];
+    if(rows.length && /[a-zA-Z]/.test(rows[0].join('')) && csvNum(rows[0][rows[0].length-1])===null) rows=rows.slice(1); // intestazione
+    rows.forEach(c=>{
+      if(kind==='mov'){
+        const d=csvDate(c[0]), a=csvNum(c[4]); const t=/^e/i.test(c[1]||'')?'e':/^u/i.test(c[1]||'')?'u':null;
+        if(!d||a==null||!t||!c[2]) return skipped++;
+        out.push({id:uid(),d,t,cat:c[2],sub:c[3]||'',amt:Math.abs(a),note:c[5]||''});
+      } else if(kind==='conti'){
+        const v=csvNum(c[2]); if(!c[1]||v==null) return skipped++;
+        out.push({id:uid(),g:c[0]||'Banche',n:c[1],v});
+      } else if(kind==='rate'){
+        const rt=csvNum(c[2]), rs=csvNum(c[3]); if(rt==null||rs==null) return skipped++;
+        out.push({id:uid(),tipo:c[0]||'PayPal',prod:c[1]||'',rata:rt,res:rs});
+      } else if(kind==='inv'){
+        if(!c[0]) return skipped++;
+        out.push({n:c[0],lvl:parseInt(c[1])||0,inv:csvNum(c[2]),eff:csvNum(c[3])});
+      } else {
+        const d=csvDate(c[0]), v=csvNum(c[1]); if(!d||v==null) return skipped++;
+        out.push({id:uid(),d,v});
+      }
+    });
+    const key = {mov:'tx',conti:'conti',rate:'rate',inv:'inv',trading:'trading'}[kind];
+    S[key] = rep ? out : S[key].concat(out);
+    save(); closeSheet(); render();
+    toast(`Importati ${out.length}${skipped?` · ${skipped} righe saltate`:''}`);
+  };
+  r.readAsText(f);
+}
+function exportJSON(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'})); a.download='bilancio-backup.json'; a.click(); }
+function importJSON(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.tx) throw 0; S=d; save(); closeSheet(); render(); toast('Backup importato'); }catch(e){ toast('File non valido'); } }; r.readAsText(f); }
+
+/* ============ SHEET ============ */
+function sheet(h){ $('sheet').innerHTML=h; $('ov').classList.add('on'); }
+function closeSheet(){ $('ov').classList.remove('on'); }
+$('ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeSheet(); });
+
+showTab('home');
+</script>
+</body>
+</html>
