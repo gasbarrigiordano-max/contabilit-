@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Bilancio: ogni utente legge e scrive solo bilancio/{proprio uid}/...
+// Sostituisci TUA_EMAIL@gmail.com con il tuo account Google.
+// Se il progetto Firebase è condiviso con altre app (es. il gommone), copia il blocco
+// "match /bilancio/..." e la funzione isOwner dentro le regole esistenti invece di sostituirle.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email == 'TUA_EMAIL@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // documento "cassaforte": sale, iterazioni e verifica della passphrase (niente dati in chiaro)
+    match /bilancio/{uid} {
+      allow read, write: if isOwner(uid);
+
+      // sezioni cifrate; kid deve corrispondere al sale attuale, così un dispositivo con la
+      // passphrase vecchia non può sovrascrivere dati già ricifrati con quella nuova
+      match /sez/{sez} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && sez in ['tx', 'conti', 'rate', 'inv', 'trading']
+          && request.resource.data.kid == getAfter(/databases/$(database)/documents/bilancio/$(uid)).data.salt;
+      }
+    }
+  }
+}

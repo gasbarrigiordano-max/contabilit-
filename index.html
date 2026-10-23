@@ -142,6 +142,23 @@ nav button.on{color:var(--acc)}
 .toast{position:fixed;left:50%;bottom:calc(92px + var(--sab));transform:translateX(-50%);background:var(--acc);color:#04130c;padding:9px 16px;border-radius:99px;font-weight:700;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.on{opacity:1}
 .note{font-size:12px;color:var(--ink3);line-height:1.5}
+.btn:disabled{opacity:.6}
+
+/* accesso (login Google + passphrase) */
+.gate{position:fixed;inset:0;z-index:100;background:radial-gradient(120% 70% at 50% 0%,#143028,var(--bg) 60%);display:none;align-items:center;justify-content:center;padding:24px 20px calc(24px + var(--sab))}
+.gate.on{display:flex}
+.gate-box{width:100%;max-width:340px;text-align:center}
+.gate-brand{justify-content:center;font-size:24px;margin-bottom:14px}
+.gate-brand i{width:30px;height:30px;border-radius:9px}
+.gate-brand i svg{width:18px;height:18px}
+.gate-box .note{margin:0 0 16px}
+.gate-box #g-err{margin:12px 0 0}
+.gate-box input{text-align:center}
+.gate-box .btn{margin-top:12px}
+.chk{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px;font-size:13px;color:var(--ink2)}
+.chk input{width:auto}
+.sync{width:8px;height:8px;border-radius:50%;display:none;cursor:pointer}
+.sync.on{display:block} .sync.ok{background:var(--acc)} .sync.saving{background:var(--warn)} .sync.err{background:var(--neg)}
 </style>
 </head>
 <body>
@@ -149,7 +166,10 @@ nav button.on{color:var(--acc)}
 <header class="mast">
   <div class="mast-top">
     <div class="brand"><i><svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg></i><span id="mast-title">Bilancio</span></div>
-    <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="sync" id="sync" onclick="toast(this.title)"></span>
+      <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+    </div>
   </div>
   <div id="period-bar">
     <div class="period">
@@ -180,23 +200,131 @@ nav button.on{color:var(--acc)}
 
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
+<div class="gate" id="gate"><div class="gate-box" id="gate-box"></div></div>
 
 <script>
 
-/* ============ STORAGE ============
-   Per ora localStorage. Quando colleghiamo Firebase basta sostituire
-   store.get / store.set (stessa idea di storageGet/storageSet dell'app gommone). */
-const KEY = 'bilancio:v1';
-const store = {
-  get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
-  set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} }
+/* ============ CONFIG FIREBASE ============
+   Incolla la configurazione web del progetto (Console Firebase → Impostazioni progetto → Le tue app → Web).
+   Con apiKey vuota l'app resta solo locale (localStorage). Questi valori non sono segreti:
+   l'accesso ai dati lo decidono le regole Firestore (firestore.rules). */
+const FIREBASE_CONFIG = {
+  apiKey: '',
+  authDomain: '',
+  projectId: '',
+  appId: ''
 };
+const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.14.1/';
+const CLOUD = !!FIREBASE_CONFIG.apiKey;
+
+/* ============ CIFRATURA ============
+   AES-GCM 256 con chiave derivata dalla passphrase (PBKDF2-SHA256).
+   Su Firestore arrivano solo iv + testo cifrato: senza passphrase i dati non si leggono. */
+const KDF_ITER = 600000;
+const CHECK = 'bilancio-ok';
+const ENC = new TextEncoder(), DEC = new TextDecoder();
+function b64(buf){ const u=new Uint8Array(buf); let s=''; for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000)); return btoa(s); }
+const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+async function deriveKey(pass, salt, iter){
+  const base = await crypto.subtle.importKey('raw', ENC.encode(pass.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+// aad lega ogni blocco cifrato alla sua sezione (tx, conti…): non si può scambiarlo con un altro
+async function encrypt(key, txt, aad){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv, additionalData:ENC.encode(aad)}, key, ENC.encode(txt));
+  return {iv:b64(iv), ct:b64(ct)};
+}
+async function decrypt(key, o, aad){
+  return DEC.decode(await crypto.subtle.decrypt({name:'AES-GCM', iv:unb64(o.iv), additionalData:ENC.encode(aad)}, key, unb64(o.ct)));
+}
+async function keyOk(key, meta){ try{ return await decrypt(key, meta.check, 'check') === CHECK; }catch(e){ return false; } }
+
+// "Ricorda su questo dispositivo": la chiave (non esportabile) resta in IndexedDB, mai la passphrase
+const kdb = {
+  open(){ return new Promise((ok,ko)=>{ const r=indexedDB.open('bilancio-keys',1); r.onupgradeneeded=()=>r.result.createObjectStore('k'); r.onsuccess=()=>ok(r.result); r.onerror=()=>ko(r.error); }); },
+  async get(id){ try{ const db=await this.open(); return await new Promise(ok=>{ const q=db.transaction('k').objectStore('k').get(id); q.onsuccess=()=>ok(q.result||null); q.onerror=()=>ok(null); }); }catch(e){ return null; } },
+  async set(id,v){ try{ const db=await this.open(); await new Promise(ok=>{ const t=db.transaction('k','readwrite'), s=t.objectStore('k'); v==null?s.delete(id):s.put(v,id); t.oncomplete=t.onerror=()=>ok(); }); }catch(e){} }
+};
+
+/* ============ STORAGE ============
+   store.get / store.set: senza Firebase localStorage (come prima); con Firebase
+   Firestore in bilancio/{uid}/sez/{tx|conti|rate|inv|trading}, ogni sezione cifrata.
+   Salvataggio ottimistico: lo stato in memoria cambia subito, l'invio parte dopo 400 ms
+   e solo per le sezioni modificate, con nuovi tentativi se la rete manca. */
+const KEY = 'bilancio:v1';
+const SEZ = ['tx','conti','rate','inv','trading'];
+const localStore = {
+  get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
+  set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} },
+  clear(){ try{ localStorage.removeItem(KEY); }catch(e){} }
+};
+const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+const cloud = {
+  db:null, user:null, meta:null, key:null, v:null, last:{}, timer:null, rt:null, busy:false, again:false, retry:0, wipeLocal:false,
+  ref(){ return this.db.collection('bilancio').doc(this.user.uid); },
+  async get(){
+    const col = this.ref().collection('sez');
+    const snap = await col.get({source:'server'}).catch(()=>col.get());
+    const out = buildSeed();
+    for(const d of snap.docs) if(SEZ.includes(d.id)) out[d.id] = JSON.parse(await decrypt(this.key, d.data(), d.id));
+    SEZ.forEach(k=>this.last[k]=JSON.stringify(out[k]));
+    return out;
+  },
+  set(v){ this.v=v; clearTimeout(this.timer); this.timer=setTimeout(()=>{ this.timer=null; this.flush(); },400); setSync('saving'); },
+  dirty(){ return this.key && this.v ? SEZ.map(k=>[k,JSON.stringify(this.v[k])]).filter(([k,j])=>j!==this.last[k]) : []; },
+  async flush(){
+    if(this.busy){ this.again=true; return; }
+    if(!this.key) return;
+    this.busy=true; this.again=false;
+    let ok=true;
+    try{
+      const dirty=this.dirty();
+      if(dirty.length){
+        setSync('saving');
+        const b=this.db.batch(), kid=this.meta.salt;
+        for(const [k,j] of dirty) b.set(this.ref().collection('sez').doc(k), {kid, ...await encrypt(this.key,j,k), updated:ts()});
+        await b.commit();
+        dirty.forEach(([k,j])=>this.last[k]=j);
+      }
+      this.retry=0;
+      if(this.wipeLocal){ localStore.clear(); this.wipeLocal=false; }
+    }catch(e){ ok=false; this.fail(e); }
+    this.busy=false;
+    if(this.again) return this.flush();
+    if(ok && !this.timer && this.key) setSync('ok');
+  },
+  fail(e){
+    console.error(e);
+    if(e.code==='permission-denied') return keyMismatch();
+    setSync('err');
+    this.retry++; clearTimeout(this.rt);
+    this.rt=setTimeout(()=>this.flush(), Math.min(60000, 2000*2**(this.retry-1)));
+  },
+  // nuova passphrase: nuovo sale, si ricifra tutto in un'unica scrittura atomica
+  async rekey(pass){
+    while(this.busy) await new Promise(r=>setTimeout(r,100));
+    clearTimeout(this.timer); this.timer=null; this.busy=true;
+    try{
+      const salt=crypto.getRandomValues(new Uint8Array(16)), key=await deriveKey(pass,salt,KDF_ITER);
+      const meta={v:1, salt:b64(salt), iter:KDF_ITER, check:await encrypt(key,CHECK,'check')};
+      const b=this.db.batch(), last={};
+      b.set(this.ref(), {...meta, updated:ts()}, {merge:true});
+      for(const k of SEZ){ last[k]=JSON.stringify(S[k]); b.set(this.ref().collection('sez').doc(k), {kid:meta.salt, ...await encrypt(key,last[k],k), updated:ts()}); }
+      await b.commit();
+      const kept = await kdb.get(this.user.uid);
+      Object.assign(this, {key, meta, last, v:S});
+      if(kept) await kdb.set(this.user.uid, {key, salt:meta.salt});
+    }finally{ this.busy=false; if(this.again) this.flush(); }
+  }
+};
+const store = CLOUD ? cloud : localStore;
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const M3 = MESI.map(m=>m.slice(0,3));
 const PAL = ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#a3e635','#94a3b8','#f87171'];
 
-let S = store.get() || buildSeed();
+let S = CLOUD ? buildSeed() : (localStore.get() || buildSeed());
 const now = new Date();
 const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', plMonth: now.getMonth() };
 
@@ -508,8 +636,13 @@ function delTx(id){ S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render
 
 /* ============ IMPOSTAZIONI ============ */
 function openSettings(){
+  const acct = CLOUD && cloud.user
+    ? `<p class="note">Connesso come <b>${esc(cloud.user.email)}</b>. I dati vengono cifrati nel browser (AES-256) prima di arrivare su Firebase: senza passphrase non si recuperano, quindi esporta ogni tanto un backup.</p>
+      <div class="grid2" style="margin-top:10px"><button class="btn ghost" onclick="lockVault()">Blocca</button><button class="btn ghost" onclick="logout()">Esci</button></div>
+      <button class="btn ghost" style="margin-top:8px" onclick="openPass()">Cambia passphrase</button>`
+    : `<p class="note">I dati restano solo in questo browser. Configura Firebase (vedi HANDOFF.md) per sincronizzarli cifrati.</p>`;
   sheet(`<h3>Dati e backup</h3>
-    <p class="note">I dati restano solo in questo browser. Con Firebase + login Google si sincronizzeranno.</p>
+    ${acct}
     <h2 class="sec" style="margin-top:16px">Importa da CSV</h2>
     <div class="f"><label>Che dati sono?</label><select id="csv-k">
       <option value="mov">Movimenti (data;tipo;categoria;voce;importo;nota)</option>
@@ -520,9 +653,10 @@ function openSettings(){
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px"><input type="checkbox" id="csv-rep" style="width:auto"> Sostituisci i dati esistenti di questo tipo</label>
     <label class="btn" style="display:block;text-align:center;cursor:pointer">Scegli file CSV<input type="file" accept=".csv,.txt" hidden onchange="importCSV(this.files[0])"></label>
     <h2 class="sec">Backup</h2>
+    <p class="note" style="margin-top:-4px">Il backup .json non è cifrato: tienilo in un posto sicuro e mai nel repo.</p>
     <button class="btn ghost" onclick="exportJSON()">Esporta backup (.json)</button>
     <label class="btn ghost" style="display:block;text-align:center;margin-top:8px;cursor:pointer">Importa backup (.json)<input type="file" accept=".json" hidden onchange="importJSON(this.files[0])"></label>
-    <button class="btn danger" style="margin-top:8px" onclick="if(confirm('Cancellare TUTTI i dati di questa app?')){S=buildSeed();save();closeSheet();render();toast('Dati cancellati')}">Cancella tutti i dati</button>
+    <button class="btn danger" style="margin-top:8px" onclick="if(confirm(CLOUD?'Cancellare TUTTI i dati, anche dal cloud?':'Cancellare TUTTI i dati di questa app?')){S=buildSeed();save();closeSheet();render();toast('Dati cancellati')}">Cancella tutti i dati</button>
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
 }
 /* ---- CSV ---- */
@@ -583,14 +717,181 @@ function importCSV(f){
   r.readAsText(f);
 }
 function exportJSON(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'})); a.download='bilancio-backup.json'; a.click(); }
-function importJSON(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.tx) throw 0; S=d; save(); closeSheet(); render(); toast('Backup importato'); }catch(e){ toast('File non valido'); } }; r.readAsText(f); }
+function importJSON(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.tx) throw 0; S={...buildSeed(), ...d}; save(); closeSheet(); render(); toast('Backup importato'); }catch(e){ toast('File non valido'); } }; r.readAsText(f); }
 
 /* ============ SHEET ============ */
 function sheet(h){ $('sheet').innerHTML=h; $('ov').classList.add('on'); }
 function closeSheet(){ $('ov').classList.remove('on'); }
 $('ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeSheet(); });
 
+/* ============ ACCESSO: login Google → passphrase → dati ============ */
+const LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg>';
+function setSync(st){
+  const el=$('sync'); if(!st){ el.className='sync'; return; }
+  el.className='sync on '+st; el.title={ok:'Sincronizzato',saving:'Salvataggio in corso…',err:'Errore di sincronizzazione, riprovo'}[st];
+}
+function gate(st, info=''){
+  const u = cloud.user;
+  const who = u ? `<p class="note">${esc(u.email)}</p>` : '';
+  const exit = u ? `<button class="btn ghost" style="margin-top:8px" onclick="logout()">Esci</button>` : '';
+  const user = u ? `<input type="email" autocomplete="username" value="${esc(u.email)}" style="display:none">` : '';
+  const rem = `<label class="chk"><input type="checkbox" id="g-r" checked> Ricorda su questo dispositivo</label>`;
+  const body = {
+    loading: `<p class="note">${esc(info||'Caricamento…')}</p>`,
+    login: `<p class="note">Le tue finanze, cifrate e sincronizzate.</p><button class="btn" onclick="login()">Accedi con Google</button>`,
+    denied: `${who}<p class="note">Questo account non ha accesso ai dati. Se è il tuo, controlla l'email nelle regole Firestore.</p>${exit}`,
+    setup: `${who}<p class="note">Scegli una passphrase: cifra i dati nel browser prima di salvarli. <b class="neg">Se la perdi i dati non si recuperano</b>, nemmeno da Firebase.</p>
+      <form onsubmit="event.preventDefault();setupVault()">${user}
+        <input type="password" id="g-p" autocomplete="new-password" placeholder="Passphrase (min. 8 caratteri)">
+        <input type="password" id="g-p2" autocomplete="new-password" placeholder="Ripeti passphrase" style="margin-top:8px">
+        ${rem}<button class="btn" id="g-b">Crea cassaforte</button></form>${exit}`,
+    unlock: `${who}${info?`<p class="note">${esc(info)}</p>`:''}
+      <form onsubmit="event.preventDefault();unlockVault()">${user}
+        <input type="password" id="g-p" autocomplete="current-password" placeholder="Passphrase">
+        ${rem}<button class="btn" id="g-b">Sblocca</button></form>${exit}`,
+    error: `<p class="note neg">${esc(info)}</p><button class="btn" onclick="location.reload()">Riprova</button>${exit}`
+  }[st];
+  $('gate-box').innerHTML = `<div class="brand gate-brand"><i>${LOGO}</i>Bilancio</div>${body}<p class="note neg" id="g-err"></p>`;
+  $('gate').classList.add('on');
+}
+function gateErr(m){ const e=$('g-err'); if(e) e.textContent=m; }
+function gateBtn(busy, label){ const b=$('g-b'); if(b){ b.disabled=busy; b.textContent=label; } }
+const authMsg = e => e.code==='auth/unauthorized-domain'
+  ? 'Dominio non autorizzato: aggiungilo in Firebase → Authentication → Impostazioni → Domini autorizzati.'
+  : 'Accesso non riuscito: '+(e.code||e.message);
+
+function loadScript(src){ return new Promise((ok,ko)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error(src)); document.head.appendChild(s); }); }
+async function boot(){
+  if(!CLOUD) return;
+  gate('loading','Connessione…');
+  try{ for(const f of ['app','auth','firestore']) await loadScript(`${FIREBASE_SDK}firebase-${f}-compat.js`); }
+  catch(e){ return gate('error','Impossibile caricare Firebase. Controlla la connessione e riprova.'); }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  cloud.db = firebase.firestore();
+  try{ await cloud.db.enablePersistence({synchronizeTabs:true}); }catch(e){} // cache offline (cifrata come su server)
+  firebase.auth().getRedirectResult().catch(e=>gateErr(authMsg(e)));
+  firebase.auth().onAuthStateChanged(onUser);
+}
+async function login(){
+  const p = new firebase.auth.GoogleAuthProvider();
+  p.setCustomParameters({prompt:'select_account'});
+  try{ await firebase.auth().signInWithPopup(p); }
+  catch(e){
+    if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(e.code)) return firebase.auth().signInWithRedirect(p);
+    if(!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(e.code)) gateErr(authMsg(e));
+  }
+}
+async function onUser(u){
+  if(!u){ resetVault(); cloud.user=null; cloud.meta=null; return gate('login'); }
+  if(cloud.user && cloud.user.uid===u.uid && cloud.key) return;
+  cloud.user = u;
+  gate('loading','Apro la cassaforte…');
+  try{ const s = await cloud.ref().get(); cloud.meta = s.exists ? s.data() : null; }
+  catch(e){ return e.code==='permission-denied' ? gate('denied') : gate('error','Non riesco a leggere i dati: '+(e.code||e.message)); }
+  if(!cloud.meta) return gate('setup');
+  const saved = await kdb.get(u.uid);
+  if(saved && saved.salt===cloud.meta.salt && await keyOk(saved.key, cloud.meta)) return openVault(saved.key);
+  gate('unlock');
+}
+function remember(key){ const r=$('g-r'); return kdb.set(cloud.user.uid, r&&r.checked ? {key, salt:cloud.meta.salt} : null); }
+function newPass(p, p2){
+  if(p.length<8){ return 'Almeno 8 caratteri'; }
+  if(p!==p2){ return 'Le due passphrase non coincidono'; }
+  return '';
+}
+async function setupVault(){
+  const err = newPass($('g-p').value, $('g-p2').value); if(err) return gateErr(err);
+  gateBtn(true,'Creo…');
+  try{
+    const salt=crypto.getRandomValues(new Uint8Array(16)), key=await deriveKey($('g-p').value,salt,KDF_ITER);
+    const meta={v:1, salt:b64(salt), iter:KDF_ITER, check:await encrypt(key,CHECK,'check')};
+    const ref=cloud.ref();
+    // mai sovrascrivere una cassaforte esistente: i dati cifrati con la vecchia chiave andrebbero persi
+    await cloud.db.runTransaction(async t=>{ if((await t.get(ref)).exists) throw new Error('exists'); t.set(ref,{...meta, created:ts()}); });
+    cloud.meta=meta;
+    await remember(key);
+    openVault(key);
+  }catch(e){
+    if(e.message==='exists') return onUser(cloud.user);
+    gateBtn(false,'Crea cassaforte'); gateErr('Errore: '+(e.code||e.message));
+  }
+}
+async function unlockVault(){
+  const p=$('g-p').value; if(!p) return;
+  gateBtn(true,'Verifico…');
+  const key = await deriveKey(p, unb64(cloud.meta.salt), cloud.meta.iter);
+  if(!await keyOk(key, cloud.meta)){ gateBtn(false,'Sblocca'); return gateErr('Passphrase errata'); }
+  await remember(key);
+  openVault(key);
+}
+async function openVault(key){
+  cloud.key=key;
+  gate('loading','Decifro i dati…');
+  try{ S = await cloud.get(); }
+  catch(e){ cloud.key=null; return gate('error','Impossibile leggere o decifrare i dati: '+(e.code||e.message||'chiave non valida')); }
+  cloud.v = S;
+  // primo accesso da un browser che aveva già dati in locale: li porto nel cloud e poi li tolgo da localStorage
+  const loc = localStore.get();
+  if(loc && SEZ.some(k=>(loc[k]||[]).length) && !SEZ.some(k=>S[k].length)){
+    S = {...buildSeed(), ...loc}; cloud.wipeLocal = true; save(); toast('Dati locali caricati nel cloud');
+  }
+  $('gate').classList.remove('on'); setSync(cloud.timer?'saving':'ok'); render();
+}
+function resetVault(){
+  clearTimeout(cloud.timer); clearTimeout(cloud.rt);
+  Object.assign(cloud, {key:null, v:null, last:{}, timer:null, again:false, retry:0});
+  S=buildSeed(); setSync(null); closeSheet(); render();
+}
+async function lockVault(msg){
+  if(!msg && cloud.dirty().length && !confirm('Ci sono modifiche non ancora salvate. Bloccare comunque?')) return;
+  await kdb.set(cloud.user.uid, null);
+  resetVault(); gate('unlock', msg||'');
+}
+async function logout(){
+  if(cloud.dirty().length && !confirm('Ci sono modifiche non ancora salvate. Uscire comunque?')) return;
+  if(cloud.user) await kdb.set(cloud.user.uid, null);
+  resetVault();
+  await firebase.auth().signOut();
+}
+// scrittura rifiutata: o le regole non ci fanno passare, o la passphrase è cambiata da un altro dispositivo
+async function keyMismatch(){
+  try{
+    const m=(await cloud.ref().get({source:'server'})).data();
+    if(m && m.salt!==cloud.meta.salt){ cloud.meta=m; return lockVault('La passphrase è stata cambiata da un altro dispositivo: inserisci quella nuova. Le ultime modifiche fatte qui non sono state salvate.'); }
+  }catch(e){}
+  setSync('err'); toast('Salvataggio rifiutato: controlla le regole Firestore');
+}
+function openPass(){
+  sheet(`<h3>Cambia passphrase</h3>
+    <p class="note">Tutti i dati vengono ricifrati con la nuova passphrase; quella vecchia smette di funzionare su tutti i dispositivi.</p>
+    <div class="f"><label>Nuova passphrase</label><input type="password" id="p-1" autocomplete="new-password"></div>
+    <div class="f"><label>Ripeti</label><input type="password" id="p-2" autocomplete="new-password"></div>
+    <button class="btn" id="p-b" onclick="changePass()">Ricifra e salva</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+async function changePass(){
+  const err = newPass($('p-1').value, $('p-2').value); if(err) return toast(err);
+  if(!navigator.onLine) return toast('Serve la connessione');
+  $('p-b').disabled=true; $('p-b').textContent='Ricifro…';
+  try{ await cloud.rekey($('p-1').value); closeSheet(); setSync('ok'); toast('Passphrase cambiata'); }
+  catch(e){ console.error(e); $('p-b').disabled=false; $('p-b').textContent='Ricifra e salva'; toast('Errore: '+(e.code||e.message)); }
+}
+document.addEventListener('visibilitychange', async ()=>{
+  if(!CLOUD || !cloud.key) return;
+  // app in background (iPhone): invia subito senza aspettare il timer
+  if(document.visibilityState==='hidden'){ if(cloud.timer){ clearTimeout(cloud.timer); cloud.timer=null; cloud.flush(); } return; }
+  // di nuovo in primo piano: ricarico se nel frattempo un altro dispositivo ha cambiato qualcosa
+  if(cloud.busy || cloud.timer || cloud.dirty().length || $('ov').classList.contains('on')) return;
+  try{
+    const fresh = await cloud.get();
+    if(cloud.busy || cloud.timer) return;
+    if(SEZ.some(k=>JSON.stringify(fresh[k])!==JSON.stringify(S[k]))){ S=fresh; cloud.v=S; render(); }
+  }catch(e){}
+});
+window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
+
 showTab('home');
+boot();
 </script>
 </body>
 </html>
