@@ -144,7 +144,7 @@ nav button.on{color:var(--acc)}
 .note{font-size:12px;color:var(--ink3);line-height:1.5}
 .btn:disabled{opacity:.6}
 
-/* accesso (login Google + passphrase) */
+/* accesso (email/password + passphrase) */
 .gate{position:fixed;inset:0;z-index:100;background:radial-gradient(120% 70% at 50% 0%,#143028,var(--bg) 60%);display:none;align-items:center;justify-content:center;padding:24px 20px calc(24px + var(--sab))}
 .gate.on{display:flex}
 .gate-box{width:100%;max-width:340px;text-align:center}
@@ -724,7 +724,7 @@ function sheet(h){ $('sheet').innerHTML=h; $('ov').classList.add('on'); }
 function closeSheet(){ $('ov').classList.remove('on'); }
 $('ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeSheet(); });
 
-/* ============ ACCESSO: login Google → passphrase → dati ============ */
+/* ============ ACCESSO: email/password → passphrase → dati ============ */
 const LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg>';
 function setSync(st){
   const el=$('sync'); if(!st){ el.className='sync'; return; }
@@ -734,12 +734,18 @@ function gate(st, info=''){
   const u = cloud.user;
   const who = u ? `<p class="note">${esc(u.email)}</p>` : '';
   const exit = u ? `<button class="btn ghost" style="margin-top:8px" onclick="logout()">Esci</button>` : '';
-  const user = u ? `<input type="email" autocomplete="username" value="${esc(u.email)}" style="display:none">` : '';
+  // nome utente distinto da quello del login, così il portachiavi salva la passphrase come voce separata
+  const user = u ? `<input type="text" autocomplete="username" value="${esc(u.email)} · cassaforte" style="display:none">` : '';
   const rem = `<label class="chk"><input type="checkbox" id="g-r" checked> Ricorda su questo dispositivo</label>`;
   const body = {
     loading: `<p class="note">${esc(info||'Caricamento…')}</p>`,
-    login: `<p class="note">Le tue finanze, cifrate e sincronizzate.</p><button class="btn" onclick="login()">Accedi con Google</button>`,
-    denied: `${who}<p class="note">Questo account non ha accesso ai dati. Se è il tuo, controlla l'email nelle regole Firestore.</p>${exit}`,
+    login: `<p class="note">Le tue finanze, cifrate e sincronizzate.</p>
+      <form onsubmit="event.preventDefault();login()">
+        <input type="email" id="g-e" autocomplete="username" inputmode="email" autocapitalize="off" placeholder="Email">
+        <input type="password" id="g-pw" autocomplete="current-password" placeholder="Password" style="margin-top:8px">
+        <button class="btn" id="g-b">Accedi</button></form>
+      <button class="btn ghost" style="margin-top:8px" onclick="resetPw()">Password dimenticata?</button>`,
+    denied: `${who}<p class="note">Questo account non ha accesso ai dati. Se è il tuo, controlla l'UID nelle regole Firestore.</p>${exit}`,
     setup: `${who}<p class="note">Scegli una passphrase: cifra i dati nel browser prima di salvarli. <b class="neg">Se la perdi i dati non si recuperano</b>, nemmeno da Firebase.</p>
       <form onsubmit="event.preventDefault();setupVault()">${user}
         <input type="password" id="g-p" autocomplete="new-password" placeholder="Passphrase (min. 8 caratteri)">
@@ -756,9 +762,12 @@ function gate(st, info=''){
 }
 function gateErr(m){ const e=$('g-err'); if(e) e.textContent=m; }
 function gateBtn(busy, label){ const b=$('g-b'); if(b){ b.disabled=busy; b.textContent=label; } }
-const authMsg = e => e.code==='auth/unauthorized-domain'
-  ? 'Dominio non autorizzato: aggiungilo in Firebase → Authentication → Impostazioni → Domini autorizzati.'
-  : 'Accesso non riuscito: '+(e.code||e.message);
+const authMsg = e => ({
+  'auth/invalid-credential':'Email o password errate', 'auth/wrong-password':'Email o password errate',
+  'auth/user-not-found':'Email o password errate', 'auth/invalid-email':'Email non valida',
+  'auth/missing-password':'Inserisci la password', 'auth/too-many-requests':'Troppi tentativi: riprova tra qualche minuto',
+  'auth/network-request-failed':'Nessuna connessione'
+})[e.code] || 'Accesso non riuscito: '+(e.code||e.message);
 
 function loadScript(src){ return new Promise((ok,ko)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error(src)); document.head.appendChild(s); }); }
 async function boot(){
@@ -769,17 +778,21 @@ async function boot(){
   firebase.initializeApp(FIREBASE_CONFIG);
   cloud.db = firebase.firestore();
   try{ await cloud.db.enablePersistence({synchronizeTabs:true}); }catch(e){} // cache offline (cifrata come su server)
-  firebase.auth().getRedirectResult().catch(e=>gateErr(authMsg(e)));
   firebase.auth().onAuthStateChanged(onUser);
 }
+// l'account si crea dalla console Firebase (Authentication → Utenti): l'app non ha la registrazione
 async function login(){
-  const p = new firebase.auth.GoogleAuthProvider();
-  p.setCustomParameters({prompt:'select_account'});
-  try{ await firebase.auth().signInWithPopup(p); }
-  catch(e){
-    if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(e.code)) return firebase.auth().signInWithRedirect(p);
-    if(!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(e.code)) gateErr(authMsg(e));
-  }
+  const e=$('g-e').value.trim(), p=$('g-pw').value;
+  if(!e || !p) return gateErr('Inserisci email e password');
+  gateBtn(true,'Accedo…');
+  try{ await firebase.auth().signInWithEmailAndPassword(e, p); }
+  catch(err){ gateBtn(false,'Accedi'); gateErr(authMsg(err)); }
+}
+async function resetPw(){
+  const e=$('g-e').value.trim();
+  if(!e) return gateErr('Scrivi la tua email, poi premi di nuovo');
+  try{ await firebase.auth().sendPasswordResetEmail(e); gateErr(''); toast('Email per reimpostare la password inviata'); }
+  catch(err){ gateErr(authMsg(err)); }
 }
 async function onUser(u){
   if(!u){ resetVault(); cloud.user=null; cloud.meta=null; return gate('login'); }

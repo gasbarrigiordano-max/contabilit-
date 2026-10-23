@@ -1,18 +1,19 @@
 # Bilancio — app finanze personali (riepilogo per riprendere il lavoro)
 
 ## Obiettivo
-App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del gommone" (Giornale di Bordo): **un unico file HTML**, mobile-first (iPhone), hosting su **GitHub Pages**, login **Google** con **Firebase** per sincronizzare i dati. Stile diverso dal gommone: grafite scuro + verde smeraldo (Manrope + JetBrains Mono) invece di blu notte/ottone.
+App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del gommone" (Giornale di Bordo): **un unico file HTML**, mobile-first (iPhone), hosting su **GitHub Pages**, login **email/password** con **Firebase** per sincronizzare i dati. Stile diverso dal gommone: grafite scuro + verde smeraldo (Manrope + JetBrains Mono) invece di blu notte/ottone.
 
 ## Stato attuale
 - File: `index.html` (un solo file, nessuna dipendenza oltre a Google Fonts e, solo in modalità cloud, l'SDK Firebase compat 10.14.1 caricato da gstatic).
 - **Nessun dato dentro il file**: i dati si caricano da CSV (ingranaggio in alto a destra → "Importa da CSV").
 - **Due modalità**, decise da `FIREBASE_CONFIG` in cima allo script:
   - `apiKey` vuota → solo locale, `localStorage` (chiave `bilancio:v1`), come la prima bozza.
-  - `apiKey` compilata → login Google + passphrase, dati su Firestore **cifrati end-to-end**.
+  - `apiKey` compilata (progetto `contabilit-1a500`) → login email/password + passphrase, dati su Firestore **cifrati end-to-end**.
 - Il resto dell'app usa solo `store.get()` / `store.set()` (`localStore` o `cloud`).
 
 ## Cloud: come funziona
-- Gate prima dell'app: **Accedi con Google** (popup, con fallback a redirect) → **Crea cassaforte** la prima volta / **Sblocca** le volte dopo.
+- Gate prima dell'app: **email + password** (account creato a mano dalla console, nessuna registrazione nell'app; c'è "Password dimenticata?") → **Crea cassaforte** la prima volta / **Sblocca** le volte dopo.
+- Password dell'account e passphrase sono due cose diverse e devono avere valori diversi: la password passa da Google, la passphrase non esce mai dal browser.
 - Cifratura: AES-GCM 256, chiave da passphrase con PBKDF2-SHA256 600.000 iterazioni, sale casuale. Ogni sezione è cifrata a parte con la sezione come dato associato. Su Firebase non arriva mai nulla in chiaro.
 - Firestore:
   - `bilancio/{uid}`: `salt`, `iter`, `check` (la parola `bilancio-ok` cifrata, serve a verificare la passphrase)
@@ -23,13 +24,14 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 - Primo accesso da un browser con dati locali e cloud vuoto: i dati locali vengono caricati nel cloud e poi tolti da `localStorage`.
 - Se perdo la passphrase i dati non si recuperano: esportare ogni tanto il backup `.json` (che è in chiaro, da tenere fuori dal repo).
 
-## Configurare Firebase (da fare una volta)
-1. Console Firebase → progetto (nuovo, oppure quello del gommone: la collezione `bilancio` è separata).
-2. Authentication → Metodo di accesso → attiva **Google**. Impostazioni → Domini autorizzati → aggiungi `<utente>.github.io`.
-3. Firestore Database → crea (modalità produzione). Regole → incolla `firestore.rules` **dopo aver messo la tua email** al posto di `TUA_EMAIL@gmail.com`. Se il progetto è condiviso, aggiungi solo il blocco `bilancio` alle regole esistenti.
-4. Impostazioni progetto → Le tue app → App web → copia `apiKey`, `authDomain`, `projectId`, `appId` dentro `FIREBASE_CONFIG` in `index.html`.
-5. (Consigliato) Google Cloud Console → Credenziali → limita la chiave API ai referrer `https://<utente>.github.io/*`.
-6. GitHub → Settings → Pages → deploy dal branch principale. Apri il sito, accedi, crea la passphrase, importa i CSV.
+## Configurare Firebase (da fare una volta) — progetto `contabilit-1a500`
+1. Authentication → Inizia → Metodo di accesso → attiva **Email/password** (non il link via email).
+2. Authentication → Utenti → **Aggiungi utente**: la tua email e una password. Copia l'**UID utente** che compare nella lista.
+3. (Consigliato) Authentication → Impostazioni → Azioni utente → disattiva **Abilita la creazione (registrazione)**, così nessun altro può crearsi un account.
+4. Firestore Database → crea (modalità produzione, località europea). Regole → incolla `firestore.rules` mettendo il tuo UID al posto di `IL_TUO_UID` → Pubblica.
+5. La config web è già in `FIREBASE_CONFIG` dentro `index.html`.
+6. (Consigliato) Google Cloud Console → API e servizi → Credenziali → limita la chiave API ai referrer `https://gasbarrigiordano-max.github.io/*`.
+7. GitHub → Settings → Pages → deploy dal branch. Sito: https://gasbarrigiordano-max.github.io/contabilit-/ → accedi, crea la passphrase, importa i CSV.
 
 ## Schermate (barra in basso)
 1. **Panoramica**: saldo mese/anno, liquidità e patrimonio, ciambella uscite per categoria, barre entrate vs uscite, top voci.
@@ -65,7 +67,7 @@ Opzione "Sostituisci" per cancellare i dati di quel tipo prima di importare.
 
 ## Prossimi passi
 1. ~~Repo con `index.html`, `.gitignore`, riepilogo~~ fatto (`.gitignore` esclude `*.csv`, `*.json`, `*.numbers`, `*.xlsx`).
-2. ~~Firebase + login Google~~ fatto nel codice: manca la configurazione (sezione sopra).
+2. ~~Firebase + login~~ fatto (email/password): manca la configurazione nella console (sezione sopra).
 3. ~~Cifratura con passphrase~~ fatto. Possibile in futuro: sblocco con Face ID/WebAuthn.
 4. Pubblicare su GitHub Pages, importare i CSV dall'app.
 5. Poi rifinire: categorie modificabili/riordinabili, budget mensili, grafici per voce, import dal CSV della carta/banca, eventuale PWA (icona sulla home iPhone).

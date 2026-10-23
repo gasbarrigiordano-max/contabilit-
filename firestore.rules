@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // Bilancio: ogni utente legge e scrive solo bilancio/{proprio uid}/...
-// Sostituisci TUA_EMAIL@gmail.com con il tuo account Google.
+// Sostituisci IL_TUO_UID con l'UID del tuo utente (Authentication → Utenti, colonna "UID utente").
 // Se il progetto Firebase è condiviso con altre app (es. il gommone), copia il blocco
 // "match /bilancio/..." e la funzione isOwner dentro le regole esistenti invece di sostituirle.
 service cloud.firestore {
@@ -10,8 +10,7 @@ service cloud.firestore {
     function isOwner(uid) {
       return request.auth != null
         && request.auth.uid == uid
-        && request.auth.token.email == 'TUA_EMAIL@gmail.com'
-        && request.auth.token.email_verified == true;
+        && uid == 'IL_TUO_UID';
     }
 
     // documento "cassaforte": sale, iterazioni e verifica della passphrase (niente dati in chiaro)
