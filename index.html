@@ -100,7 +100,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .mx tr.grp td{background:var(--panel2);font-weight:700}
 .mx tr.grp td:first-child{background:var(--panel2)}
 .mx tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
-.mx td.z{color:#33443b}
+.mx td.z{color:var(--ink3)}
 .mx tr.tot td{font-weight:800;border-top:2px solid var(--line)}
 .mx td.t{font-weight:700;background:var(--panel2)}
 
@@ -121,6 +121,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .inv-r div:not(:first-child){text-align:right}
 .l1{padding-left:12px;color:var(--ink2)} .l2{padding-left:24px;color:var(--ink3);font-size:11.5px}
 /* panoramica: saldo quadrato + rate del mese */
+.h-kpi{margin-top:10px}
 .top2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sq{aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
 .sq .io small{margin:6px 0 1px}
@@ -174,6 +175,62 @@ nav button.on{color:var(--acc)}
 .chk input{width:auto}
 .sync{width:8px;height:8px;border-radius:50%;display:none;cursor:pointer}
 .sync.on{display:block} .sync.ok{background:var(--acc)} .sync.saving{background:var(--warn)} .sync.err{background:var(--neg)}
+
+/* ===== schermo largo: iPad in orizzontale, Mac ===== */
+@media (min-width:900px){
+  body{max-width:none;margin:0;padding:0 0 40px 210px}
+  .mast,main{max-width:1200px;margin:0 auto}
+  .mast{padding:16px 28px 12px;border-bottom:none}
+  .view{padding:12px 28px 28px}
+  nav{left:0;top:0;bottom:0;transform:none;width:210px;max-width:none;flex-direction:column;gap:4px;
+    padding:calc(22px + var(--sat)) 12px 22px;border-top:none;border-right:1px solid var(--line);background:var(--panel)}
+  nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:14px;padding:11px 14px;border-radius:10px}
+  nav button:hover{color:var(--ink2)}
+  nav button.on{background:var(--acc-dim);color:var(--acc)}
+  nav button svg{width:19px;height:19px}
+  .fab{right:32px;bottom:32px}
+  .toast{left:calc(50% + 105px);bottom:32px}
+  .ov{align-items:center}
+  .sheet{border-radius:22px;max-width:480px;max-height:86vh;padding:22px 22px 24px}
+  h2.sec{margin-top:4px}
+
+  /* Panoramica: saldo | rate | liquidità+patrimonio, poi grafici affiancati */
+  .home{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}
+  .home .top2{grid-column:span 2;gap:16px}
+  .home .sq,.home .rc{aspect-ratio:auto;min-height:230px}
+  .home .sq>div>b{font-size:30px !important}
+  .home .sq .io b{font-size:22px}
+  .home .h-kpi{grid-template-columns:1fr;gap:16px;margin:0}
+  .home .h-kpi .card{display:flex;flex-direction:column;justify-content:center}
+  .home .h-cat{grid-column:span 2}
+  .home .h-cat,.home .h-bars{display:flex;flex-direction:column}
+  .home .h-cat .card,.home .h-bars .card{flex:1}
+  .home .h-sub{grid-column:1/-1}
+  .home .h-sub .bl{display:grid;grid-template-columns:1fr 1fr;gap:14px 28px}
+  .donut{width:150px;height:150px}
+  .home .donut-wrap{gap:32px}
+  .home .legend{flex:0 1 380px}
+  .narrow-only{display:none}
+
+  /* Movimenti su due colonne, intestazione del giorno a tutta larghezza */
+  #mov-list{display:grid;grid-template-columns:1fr 1fr;column-gap:12px}
+  #mov-list .day,#mov-list .empty{grid-column:1/-1}
+
+  /* Mensile: tutti i mesi senza scorrere quando c'è spazio */
+  .mx-wrap{max-height:none}
+  table.mx{min-width:100%}
+  .mx th,.mx td{padding:8px 8px}
+
+  /* Patrimonio: Banche / Cash / Investimenti affiancati */
+  .pgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .pgs .gh{margin-top:20px}
+
+  /* Altro */
+  .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .rgrid .rate{margin:0}
+  .rgrid .empty{grid-column:1/-1}
+  .inv-r{grid-template-columns:1fr 110px 110px 70px}
+}
 </style>
 </head>
 <body>
@@ -365,6 +422,9 @@ function periodTx(){ return S.tx.filter(inPeriod); }
 function periodLabel(){ return ui.month==='all' ? `Anno ${ui.year}` : `${MESI[ui.month]} ${ui.year}`; }
 function groupBy(arr, fn){ const m = new Map(); arr.forEach(x=>{ const k=fn(x); m.set(k,(m.get(k)||0)+x.amt); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
 
+const WIDE = matchMedia('(min-width:900px)');
+WIDE.addEventListener('change', ()=>render());
+
 /* ============ NAV / PERIODO ============ */
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
 function showTab(t){
@@ -413,23 +473,23 @@ function renderHome(){
         <div style="width:6px;height:${yU[i]/mx*100}%;background:var(--neg);border-radius:3px;min-height:2px;opacity:${ui.month===i||ui.month==='all'?1:.35}"></div>
       </div><div style="font-size:9px;color:var(--ink3);margin-top:5px;font-weight:700">${m[0]}</div></div>`).join('');
   const maxSub = bySub[0]?bySub[0][1]:1;
-  $('v-home').innerHTML = `
+  $('v-home').innerHTML = `<div class="home">
     <div class="top2">
       <div class="card hero kpi sq"><div><small>Saldo ${periodLabel().toLowerCase()}</small><b class="mono ${saldo<0?'neg':''}" style="font-size:24px">${eur0(saldo)}</b></div>
         <div class="io"><small>Entrate</small><b class="mono pos">${eur0(te)}</b><small>Uscite</small><b class="mono neg">${eur0(tu)}</b></div></div>
       ${rateCard()}
     </div>
-    <div class="grid2" style="margin-top:10px">
+    <div class="grid2 h-kpi">
       <div class="card kpi" onclick="showTab('pat')"><small>Liquidità</small><b class="mono">${eur0(liq)}</b></div>
       <div class="card kpi" onclick="showTab('pat')"><small>Patrimonio</small><b class="mono">${eur0(patr)}</b></div>
     </div>
-    <h2 class="sec">Uscite per categoria</h2>
-    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${Math.round(v).toLocaleString('it-IT')} €</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div>
-    <h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
+    <div class="h-cat"><h2 class="sec">Uscite per categoria</h2>
+    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${Math.round(v).toLocaleString('it-IT')} €</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div></div>
+    <div class="h-bars"><h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
     <div class="card"><div style="display:flex;gap:2px">${bars}</div>
-      <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div>
-    <h2 class="sec">Voci che pesano di più</h2>
-    <div class="card">${bySub.length ? `<div class="bl">${bySub.map(([k,v],i)=>`<div class="bl-i"><div class="top"><span>${esc(k)}</span><span class="mono">${eur0(v)}</span></div><div class="bar"><div style="width:${v/maxSub*100}%;background:${PAL[i%PAL.length]}"></div></div></div>`).join('')}</div>` : '<div class="empty">—</div>'}</div>`;
+      <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div></div>
+    <div class="h-sub"><h2 class="sec">Voci che pesano di più</h2>
+    <div class="card">${bySub.length ? `<div class="bl">${bySub.map(([k,v],i)=>`<div class="bl-i"><div class="top"><span>${esc(k)}</span><span class="mono">${eur0(v)}</span></div><div class="bar"><div style="width:${v/maxSub*100}%;background:${PAL[i%PAL.length]}"></div></div></div>`).join('')}</div>` : '<div class="empty">—</div>'}</div></div></div>`;
 }
 
 // rate da pagare nel mese corrente, raggruppate per metodo (PayPal, Klarna…)
@@ -439,7 +499,7 @@ function rateCard(){
   list.forEach(r=>{ const k=r.tipo||'Altro'; const g=by.get(k)||{due:0,paid:0}; g[rataPagata(r)?'paid':'due']+=r.rata; by.set(k,g); });
   const groups = [...by.entries()].sort((a,b)=>(b[1].due-a[1].due) || (b[1].paid-a[1].paid)); // prima quelle da pagare
   const due = sum(list.filter(r=>!rataPagata(r)).map(r=>r.rata)), paid = sum(list.filter(rataPagata).map(r=>r.rata));
-  const rows = paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
+  const rows = WIDE.matches ? 8 : paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
   const amt = v => v ? `<b class="mono">${eur(v)}</b>` : `<b class="ok">✓</b>`;
   const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due)}</div>`).join('')
     + (groups.length>MAX ? `<div><span>+ altri ${groups.length-MAX}</span>${amt(sum(groups.slice(MAX).map(([k,g])=>g.due)))}</div>` : '');
@@ -499,14 +559,15 @@ function renderMx(){
     c.subs.get(sk)[txMonth(t)]+=t.amt;
   });
   const order = [...cats.entries()].sort((a,b)=>sum(b[1].m)-sum(a[1].m));
-  const cell = v => v ? `<td class="mono">${v.toLocaleString('it-IT',{maximumFractionDigits:0})}</td>` : `<td class="z mono">·</td>`;
+  const fmt = v => v.toLocaleString('it-IT',{maximumFractionDigits:0}) + ' €';
+  const cell = v => `<td class="mono${v?'':' z'}">${fmt(v)}</td>`;
   const tot = Array(12).fill(0); order.forEach(([k,c])=>c.m.forEach((v,i)=>tot[i]+=v));
   let rows='';
   order.forEach(([k,c])=>{
-    rows+=`<tr class="grp"><td>${esc(k)}</td>${c.m.map(cell).join('')}<td class="mono t">${sum(c.m).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>`;
+    rows+=`<tr class="grp"><td>${esc(k)}</td>${c.m.map(cell).join('')}<td class="mono t">${fmt(sum(c.m))}</td></tr>`;
     if(c.subs.size>1 || ![...c.subs.keys()].includes('—'))
       [...c.subs.entries()].sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([s,m])=>{
-        rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${sum(m).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>`;
+        rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${fmt(sum(m))}</td></tr>`;
       });
   });
   $('v-mx').innerHTML = `
@@ -516,10 +577,10 @@ function renderMx(){
     </div>
     <div class="mx-wrap"><table class="mx">
       <tr><th>${tipo==='u'?'Uscite':'Entrate'} ${ui.year}</th>${M3.map(m=>`<th>${m}</th>`).join('')}<th>Totale</th></tr>
-      <tr class="tot"><td>Totale mese</td>${tot.map(cell).join('')}<td class="mono t">${sum(tot).toLocaleString('it-IT',{maximumFractionDigits:0})}</td></tr>
+      <tr class="tot"><td>Totale mese</td>${tot.map(cell).join('')}<td class="mono t">${fmt(sum(tot))}</td></tr>
       ${rows || '<tr><td colspan="14" class="empty">Nessun dato per questo anno</td></tr>'}
     </table></div>
-    <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. Scorri a destra per vedere tutti i mesi.</p>`;
+    <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
 }
 
 /* ---- Patrimonio ---- */
@@ -529,12 +590,13 @@ function renderPat(){
   let html = `<div class="card hero kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
     <div class="row" style="margin-top:14px"><div><small>Liquidità</small><b class="mono" style="font-size:16px">${eur(liq,0)}</b></div>
     <div style="text-align:right"><small>Investimenti</small><b class="mono" style="font-size:16px">${eur(patr-liq,0)}</b></div></div></div>`;
+  html += '<div class="pgs">';
   groups.forEach(g=>{
     const items = S.conti.filter(c=>c.g===g);
-    html += `<div class="gh"><b>${g}</b><span class="mono">${eur(sum(items.map(c=>c.v)),0)}</span></div><div class="card" style="padding:4px 14px">
-      ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span>${esc(c.n)}</span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div>`;
+    html += `<div><div class="gh"><b>${g}</b><span class="mono">${eur(sum(items.map(c=>c.v)),0)}</span></div><div class="card" style="padding:4px 14px">
+      ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span>${esc(c.n)}</span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div></div>`;
   });
-  html += `<button class="btn ghost" style="margin-top:18px" onclick="openConto()">+ Aggiungi conto</button>`;
+  html += `</div><button class="btn ghost" style="margin-top:18px" onclick="openConto()">+ Aggiungi conto</button>`;
   $('v-pat').innerHTML = html;
 }
 function openConto(id){
@@ -563,10 +625,10 @@ function renderAltro(){
   if(ui.altro==='rate'){
     const tot = sum(S.rate.map(r=>r.rata*r.res)), mensile = sum(S.rate.filter(r=>r.res>0).map(r=>r.rata));
     body = `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(mensile)}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(tot)}</b></div></div>
-      <h2 class="sec">Rate attive</h2>` +
+      <h2 class="sec">Rate attive</h2><div class="rgrid">` +
       (rateMese().map(r=>`<div class="card rate"><div class="row"><div><b>${esc(r.prod&&r.prod!=='-'?r.prod:r.tipo)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.res} rate</div></div><b class="mono">${eur(r.rata*r.res)}</b></div>
         <div class="row"><span class="pill">${r.res ? r.res+' residue' : 'saldata'}</span><div style="display:flex;gap:6px"><button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button>${rataPagata(r) ? `<button class="btn sm ghost" onclick="unpayRata('${r.id}')">✓ Pagata · annulla</button>` : `<button class="btn sm" onclick="payRata('${r.id}')">Rata pagata</button>`}</div></div></div>`).join('') || '<div class="empty">Nessuna rata attiva 🎉</div>') +
-      `<button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>`;
+      `</div><button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>`;
   } else if(ui.altro==='inv'){
     const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
     const ti = sum(top.map(r=>r.inv||0)), te = sum(top.map(r=>r.eff||0));
