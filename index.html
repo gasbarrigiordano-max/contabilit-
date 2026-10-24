@@ -242,7 +242,7 @@ nav button.on{color:var(--acc)}
   <div class="mast-top">
     <div class="brand"><i><svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg></i><span id="mast-title">Bilancio</span></div>
     <div style="display:flex;align-items:center;gap:12px">
-      <span class="sync" id="sync" onclick="toast(this.title)"></span>
+      <span class="sync" id="sync" onclick="syncTap(this)"></span>
       <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
     </div>
   </div>
@@ -1268,6 +1268,11 @@ function setSync(st){
   const el=$('sync'); if(!st){ el.className='sync'; return; }
   el.className='sync on '+st; el.title={ok:'Sincronizzato',saving:'Salvataggio in corso…',err:'Errore di sincronizzazione, riprovo'}[st];
 }
+// puntino rosso: un tocco riprova subito il salvataggio (es. dopo aver aggiornato le regole Firestore)
+function syncTap(el){
+  if(CLOUD && cloud.key && el.classList.contains('err')){ cloud.retry=0; clearTimeout(cloud.rt); toast('Riprovo il salvataggio…'); cloud.flush(); }
+  else toast(el.title);
+}
 function gate(st, info=''){
   const u = cloud.user;
   const who = u ? `<p class="note">${esc(u.email)}</p>` : '';
@@ -1415,7 +1420,8 @@ async function keyMismatch(){
     const m=(await cloud.ref().get({source:'server'})).data();
     if(m && m.salt!==cloud.meta.salt){ cloud.meta=m; return lockVault('La passphrase è stata cambiata da un altro dispositivo: inserisci quella nuova. Le ultime modifiche fatte qui non sono state salvate.'); }
   }catch(e){}
-  setSync('err'); toast('Salvataggio rifiutato: aggiorna le regole Firestore (firestore.rules)');
+  setSync('err'); $('sync').title='Salvataggio rifiutato dalle regole Firestore: aggiornale e tocca qui per riprovare';
+  toast('Salvataggio rifiutato: aggiorna le regole Firestore, poi tocca il puntino rosso');
 }
 function openPass(){
   sheet(`<h3>Cambia passphrase</h3>
