@@ -745,7 +745,10 @@ function gate(st, info=''){
         <input type="password" id="g-pw" autocomplete="current-password" placeholder="Password" style="margin-top:8px">
         <button class="btn" id="g-b">Accedi</button></form>
       <button class="btn ghost" style="margin-top:8px" onclick="resetPw()">Password dimenticata?</button>`,
-    denied: `${who}<p class="note">Questo account non ha accesso ai dati. Se è il tuo, controlla l'UID nelle regole Firestore.</p>${exit}`,
+    denied: `${who}<p class="note">Questo account non ha accesso ai dati. Se è il tuo, nelle regole Firestore deve esserci esattamente questo UID:</p>
+      <p class="mono" style="word-break:break-all;margin:0 0 4px">${esc(u?u.uid:'')}</p>
+      <button class="btn ghost" onclick="navigator.clipboard.writeText(cloud.user.uid).then(()=>toast('UID copiato'))">Copia UID</button>
+      <button class="btn" style="margin-top:8px" onclick="onUser(cloud.user)">Riprova</button>${exit}`,
     setup: `${who}<p class="note">Scegli una passphrase: cifra i dati nel browser prima di salvarli. <b class="neg">Se la perdi i dati non si recuperano</b>, nemmeno da Firebase.</p>
       <form onsubmit="event.preventDefault();setupVault()">${user}
         <input type="password" id="g-p" autocomplete="new-password" placeholder="Passphrase (min. 8 caratteri)">
