@@ -116,6 +116,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .btn.sm{padding:7px 11px;font-size:12px;width:auto;border-radius:9px}
 .rate{margin-bottom:8px}
 .rate .row{margin-bottom:8px}
+.rate .row>b{white-space:nowrap}
 .inv-r{display:grid;grid-template-columns:1fr 74px 74px 44px;gap:6px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:12px}
 .inv-r.h{color:var(--ink3);font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
 .inv-r div:not(:first-child){text-align:right}
@@ -402,7 +403,7 @@ const PAL = ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923
 
 let S = CLOUD ? buildSeed() : (localStore.get() || buildSeed());
 const now = new Date();
-const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', plMonth: now.getMonth() };
+const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', rateTab:'due', plMonth: now.getMonth() };
 
 function buildSeed(){ return { tx:[], conti:[], rate:[], inv:[], trading:[] }; }
 function save(){ store.set(S); }
@@ -418,9 +419,66 @@ const sum = a => a.reduce((x,y)=>x+y,0);
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1600); }
 const txYear = t => +t.d.slice(0,4);
 const thisMonth = () => `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-const rataPagata = r => r.paid===thisMonth();
-// rate del mese corrente: attive o pagate in questo mese (anche se era l'ultima)
-const rateMese = () => S.rate.filter(r=>r.res>0 || rataPagata(r));
+
+/* ---- Rate: piano di pagamento ----
+   {id, tipo, prod, acq, tot, n, rata, pre, done, first, fi, conto}
+   n rate mensili da `rata` € (l'ultima assorbe gli arrotondamenti); pre = già pagate prima di
+   inserirla, done = pagate dall'app. La rata i (0…n-1) scade il giorno first + (i - fi) mesi. */
+const round2 = v => Math.round(v*100)/100;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const today = () => ymd(new Date());
+function addMonths(s, k){
+  const [y,m,d] = s.split('-').map(Number), t = new Date(y, m-1+k, 1);
+  t.setDate(Math.min(d, new Date(t.getFullYear(), t.getMonth()+1, 0).getDate())); // 31 gen + 1 mese = 28/29 feb
+  return ymd(t);
+}
+const fmtD = s => `${+s.slice(8,10)} ${M3[+s.slice(5,7)-1].toLowerCase()} ${s.slice(0,4)}`;
+const dueDate = (r,i) => r.first ? addMonths(r.first, i - r.fi) : null;
+const quota = (r,i) => i===r.n-1 ? round2(r.tot - r.rata*(r.n-1)) : r.rata;
+const pagate = r => Math.min(r.n, r.pre + r.done);
+const residue = r => r.n - pagate(r);
+const daPagare = r => round2(sum(Array.from({length:residue(r)}, (_,j)=>quota(r, pagate(r)+j))));
+const contoName = id => (S.conti.find(c=>c.id===id)||{}).n || '';
+// rate con scadenza nel mese ym ('YYYY-MM'), pagate o no
+function rateDelMese(ym){
+  const out = [];
+  S.rate.forEach(r=>{
+    if(!r.first){ if(residue(r)) out.push({r, amt:r.rata, paid:false}); return; } // senza data: la conto da pagare
+    for(let i=r.pre; i<r.n; i++){
+      const d = dueDate(r,i), m = d.slice(0,7);
+      if(m>ym) break;
+      if(m===ym) out.push({r, i, d, amt:quota(r,i), paid:i<pagate(r)});
+    }
+  });
+  return out;
+}
+// vecchio formato {tipo, prod, rata, res} → piano senza data (va completato con Modifica)
+function migrateRata(r){
+  if(r.n!=null) return r;
+  const res = Math.max(0, r.res||0);
+  return {id:r.id||uid(), tipo:r.tipo||'', prod:r.prod==='-'?'':(r.prod||''), acq:null, tot:round2((r.rata||0)*res), n:res, rata:r.rata||0, pre:0, done:0, first:null, fi:0, conto:''};
+}
+// paga le rate scadute (oggi compreso): uscita nei movimenti, importo tolto dal conto, rata segnata pagata.
+// L'id del movimento è fisso per rata, così due dispositivi non la registrano due volte.
+function payDueRate(){
+  const t = today(); let k = 0;
+  S.rate.forEach(r=>{
+    while(r.first && pagate(r)<r.n){
+      const i = pagate(r), d = dueDate(r,i);
+      if(d>t) break;
+      const id = `rt_${r.id}_${i}`, amt = quota(r,i);
+      if(!S.tx.some(x=>x.id===id)){
+        S.tx.push({id, d, t:'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.conto||''});
+        const c = S.conti.find(c=>c.id===r.conto); if(c) c.v = round2(c.v - amt);
+      }
+      r.done++; k++;
+    }
+  });
+  if(k){ save(); toast(k===1 ? '1 rata pagata in automatico' : `${k} rate pagate in automatico`); }
+  return k;
+}
+// dopo ogni caricamento dei dati (avvio, sblocco, backup importato, ritorno in primo piano)
+function afterLoad(){ S.rate = S.rate.map(migrateRata); payDueRate(); }
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
 function periodTx(){ return S.tx.filter(inPeriod); }
@@ -503,18 +561,18 @@ function renderHome(){
 
 // rate da pagare nel mese corrente, raggruppate per metodo (PayPal, Klarna…)
 function rateCard(){
-  const list = rateMese();
+  const list = rateDelMese(thisMonth());
   const by = new Map();
-  list.forEach(r=>{ const k=r.tipo||'Altro'; const g=by.get(k)||{due:0,paid:0}; g[rataPagata(r)?'paid':'due']+=r.rata; by.set(k,g); });
+  list.forEach(x=>{ const k=x.r.tipo||'Altro'; const g=by.get(k)||{due:0,paid:0}; g[x.paid?'paid':'due']+=x.amt; by.set(k,g); });
   const groups = [...by.entries()].sort((a,b)=>(b[1].due-a[1].due) || (b[1].paid-a[1].paid)); // prima quelle da pagare
-  const due = sum(list.filter(r=>!rataPagata(r)).map(r=>r.rata)), paid = sum(list.filter(rataPagata).map(r=>r.rata));
+  const due = sum(list.filter(x=>!x.paid).map(x=>x.amt)), paid = sum(list.filter(x=>x.paid).map(x=>x.amt));
   const rows = WIDE.matches ? 8 : paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
   const amt = v => v ? `<b class="mono">${eur(v)}</b>` : `<b class="ok">✓</b>`;
   const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due)}</div>`).join('')
     + (groups.length>MAX ? `<div><span>+ altri ${groups.length-MAX}</span>${amt(sum(groups.slice(MAX).map(([k,g])=>g.due)))}</div>` : '');
   return `<div class="card kpi rc" onclick="showTab('rate')"><small>Rate da pagare · ${M3[now.getMonth()]}</small>
     ${list.length ? `<b class="mono ${due?'neg':'pos'}">${due?eur(due):'Tutto pagato'}</b><div class="rl">${lines}</div>
-      ${paid?`<div class="note">Già pagate ${eur(paid)}</div>`:''}` : `<div class="empty" style="padding:18px 0 0">Nessuna rata attiva</div>`}</div>`;
+      ${paid?`<div class="note">Già pagate ${eur(paid)}</div>`:''}` : `<div class="empty" style="padding:18px 0 0">Nessuna rata questo mese</div>`}</div>`;
 }
 
 /* ---- Movimenti ---- */
@@ -632,12 +690,7 @@ function renderAltro(){
   const tabs = [['rate','Rate'],['inv','Investimenti'],['trading','Trading']];
   let body='';
   if(ui.altro==='rate'){
-    const tot = sum(S.rate.map(r=>r.rata*r.res)), mensile = sum(S.rate.filter(r=>r.res>0).map(r=>r.rata));
-    body = `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(mensile)}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(tot)}</b></div></div>
-      <h2 class="sec">Rate attive</h2><div class="rgrid">` +
-      (rateMese().map(r=>`<div class="card rate"><div class="row"><div><b>${esc(r.prod&&r.prod!=='-'?r.prod:r.tipo)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.res} rate</div></div><b class="mono">${eur(r.rata*r.res)}</b></div>
-        <div class="row"><span class="pill">${r.res ? r.res+' residue' : 'saldata'}</span><div style="display:flex;gap:6px"><button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button>${rataPagata(r) ? `<button class="btn sm ghost" onclick="unpayRata('${r.id}')">✓ Pagata · annulla</button>` : `<button class="btn sm" onclick="payRata('${r.id}')">Rata pagata</button>`}</div></div></div>`).join('') || '<div class="empty">Nessuna rata attiva 🎉</div>') +
-      `</div><button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>`;
+    body = renderRate();
   } else if(ui.altro==='inv'){
     const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
     const ti = sum(top.map(r=>r.inv||0)), te = sum(top.map(r=>r.eff||0));
@@ -664,23 +717,102 @@ function renderAltro(){
   const seg = WIDE.matches ? '' : `<div class="seg" style="margin-bottom:14px">${tabs.map(([v,l])=>`<button class="${ui.altro===v?'on':''}" onclick="ui.altro='${v}';render()">${l}</button>`).join('')}</div>`;
   $('v-altro').innerHTML = seg + body;
 }
-function payRata(id){ const r=S.rate.find(x=>x.id===id); r.res=Math.max(0,r.res-1); r.paid=thisMonth(); save(); render(); toast('Rata segnata come pagata'); }
-function unpayRata(id){ const r=S.rate.find(x=>x.id===id); r.res++; r.paid=null; save(); render(); toast('Pagamento annullato'); }
+function renderRate(){
+  const att = S.rate.filter(r=>residue(r)>0), fin = S.rate.filter(r=>residue(r)===0);
+  const seg = `<div class="seg" style="margin-bottom:14px">
+    <button class="${ui.rateTab==='due'?'on':''}" onclick="ui.rateTab='due';render()">Da pagare · ${att.length}</button>
+    <button class="${ui.rateTab==='paid'?'on':''}" onclick="ui.rateTab='paid';render()">Pagate · ${fin.length}</button></div>`;
+  const titolo = r => esc(r.prod || r.tipo || 'Rata');
+  if(ui.rateTab==='due'){
+    const ym = thisMonth(), nome = MESI[now.getMonth()].toLowerCase();
+    const next = r => r.first ? dueDate(r, pagate(r)) : '9999';
+    const cards = att.sort((a,b)=>next(a).localeCompare(next(b))).map(r=>{
+      const pm = rateDelMese(ym).find(x=>x.r===r && x.paid);
+      const info = r.first
+        ? `Prossima: <b style="color:var(--ink)">${fmtD(next(r))}</b> · ${eur(quota(r,pagate(r)))}`
+        : `<span style="color:var(--warn)">Manca la data della prossima rata: tocca Modifica</span>`;
+      return `<div class="card rate">
+        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.n}${r.conto?` · da ${esc(contoName(r.conto))}`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
+        <div class="bar" style="margin:4px 0 8px"><div style="width:${pagate(r)/r.n*100}%;background:var(--acc)"></div></div>
+        <div class="row"><div class="note">${pagate(r)}/${r.n} pagate · ${info}${pm?`<br><span class="pos">✓ ${nome} pagata il ${fmtD(pm.d)}</span>`:''}</div>
+          <button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button></div></div>`;
+    }).join('');
+    return seg + `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(sum(att.map(r=>r.rata)))}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(sum(att.map(daPagare)))}</b></div></div>
+      <h2 class="sec">Rate in corso</h2><div class="rgrid">${cards || '<div class="empty">Nessuna rata da pagare 🎉</div>'}</div>
+      <button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>
+      <p class="note" style="margin-top:10px">Nel giorno della scadenza (o alla prima apertura dell'app dopo) la rata viene registrata tra le uscite, categoria Rate, e tolta dal conto scelto.</p>`;
+  }
+  const storico = S.tx.filter(t=>t.rid).sort((a,b)=>b.d.localeCompare(a.d) || b.id.localeCompare(a.id));
+  const ultima = r => (storico.find(t=>t.rid===r.id)||{}).d;
+  let cur='', righe='';
+  storico.forEach(t=>{
+    const m = `${MESI[txMonth(t)]} ${txYear(t)}`;
+    if(m!==cur){ cur=m; righe+=`<div class="day">${m.toUpperCase()}</div>`; }
+    righe += `<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.note.split(' · ')[0]||t.sub)}</b><small>${fmtD(t.d)} · ${esc(t.sub)} · ${esc(t.note.split(' · ')[1]||'')}${t.conto&&contoName(t.conto)?` · da ${esc(contoName(t.conto))}`:''}</small></div><b class="mono">-${eur(t.amt)}</b></div>`;
+  });
+  return seg + `<h2 class="sec" style="margin-top:0">Rate concluse</h2><div class="rgrid">${fin.map(r=>`<div class="card rate" onclick="openRata('${r.id}')" style="cursor:pointer">
+      <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${esc(r.tipo)} · ${r.n} rate${ultima(r)?` · ultima il ${fmtD(ultima(r))}`:''}</div></div><b class="mono">${eur(r.tot)}</b></div>
+      <span class="pill">✓ saldata</span></div>`).join('') || '<div class="empty">Nessuna rata conclusa</div>'}</div>
+    <h2 class="sec">Pagamenti registrati</h2>${righe || '<div class="empty">Ancora nessun pagamento registrato dall\'app</div>'}`;
+}
 function openRata(id){
-  const r = id ? S.rate.find(x=>x.id===id) : {tipo:'PayPal',prod:'',rata:0,res:1};
+  const r = id ? S.rate.find(x=>x.id===id) : null;
+  const acq = r ? (r.acq||'') : today();
+  const dec = x => x ? String(x).replace('.',',') : ''; // 229.5 → 229,5 nel campo
+  const v = r ? {tipo:r.tipo, prod:r.prod, acq, tot:dec(r.tot), n:r.n||'', res:residue(r), next:r.first ? dueDate(r,pagate(r)) : addMonths(today(),1), conto:r.conto}
+              : {tipo:'PayPal', prod:'', acq, tot:'', n:'', res:'', next:addMonths(acq,1), conto:(S.conti.find(c=>c.g==='Banche')||{}).id||''};
+  const conti = `<option value="">Nessun conto (non scalare)</option>` + S.conti.map(c=>`<option value="${c.id}" ${c.id===v.conto?'selected':''}>${esc(c.n)} · ${c.g}</option>`).join('');
   sheet(`<h3>${id?'Modifica rata':'Nuova rata'}</h3>
-    <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(r.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>AliExpress<option>Findomestic<option>Compass<option>Scalapay<option>Carta di credito</datalist></div>
-    <div class="f"><label>Prodotto</label><input id="r-p" value="${esc(r.prod==='-'?'':r.prod)}"></div>
-    <div class="grid2"><div class="f"><label>Importo rata (€)</label><input id="r-r" inputmode="decimal" value="${r.rata||''}" placeholder="0,00 €"></div><div class="f"><label>Rate residue</label><input id="r-n" inputmode="numeric" value="${r.res}"></div></div>
+    <div class="grid2">
+      <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(v.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>AliExpress<option>Findomestic<option>Compass<option>Scalapay<option>Carta di credito</datalist></div>
+      <div class="f"><label>Prodotto</label><input id="r-p" value="${esc(v.prod)}" placeholder="es. iPhone"></div>
+      <div class="f"><label>Data acquisto</label><input type="date" id="r-acq" value="${v.acq}" oninput="rataAcq()"></div>
+      <div class="f"><label>Importo totale (€)</label><input id="r-tot" inputmode="decimal" value="${v.tot}" placeholder="0,00 €" oninput="rataPrev()"></div>
+      <div class="f"><label>Numero rate</label><input id="r-n" inputmode="numeric" value="${v.n}" placeholder="es. 12" oninput="rataN()"></div>
+      <div class="f"><label>Rate da pagare</label><input id="r-res" inputmode="numeric" value="${v.res}" placeholder="tutte" oninput="this.dataset.t=1;rataPrev()"></div>
+      <div class="f"><label>Prossima rata il</label><input type="date" id="r-next" value="${v.next}" oninput="this.dataset.t=1;rataPrev()"></div>
+      <div class="f"><label>Pagata da</label><select id="r-c">${conti}</select></div>
+    </div>
+    <p class="note" id="r-prev" style="margin:0 0 12px"></p>
+    <p class="note" style="margin:-4px 0 12px">Le rate successive scadono ogni mese nello stesso giorno. Per la carta di credito aggiungi un conto "Carta di credito" in Patrimonio.</p>
     <button class="btn" onclick="saveRata('${id||''}')">Salva</button>
-    ${id?`<button class="btn danger" style="margin-top:8px" onclick="S.rate=S.rate.filter(x=>x.id!=='${id}');save();closeSheet();render()">Elimina</button>`:''}
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delRata('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+  if(id){ $('r-res').dataset.t=1; $('r-next').dataset.t=1; }
+  rataPrev();
+}
+// valori dei campi: finché non li tocchi, "rate da pagare" segue il numero rate e la prossima rata segue l'acquisto
+function rataN(){ if(!$('r-res').dataset.t) $('r-res').value = $('r-n').value; rataPrev(); }
+function rataAcq(){ if(!$('r-next').dataset.t && $('r-acq').value) $('r-next').value = addMonths($('r-acq').value, 1); rataPrev(); }
+function rataForm(){
+  const n = parseInt($('r-n').value)||0, r = $('r-res').value.trim();
+  return {tot:num($('r-tot').value), n, res: r==='' ? n : parseInt(r), next:$('r-next').value};
+}
+function rataPrev(){
+  const {tot,n,res,next} = rataForm(), el = $('r-prev');
+  if(!tot || !n){ el.textContent = ''; return; }
+  const rata = round2(tot/n);
+  el.innerHTML = `Rata <b class="mono" style="color:var(--ink)">${eur(rata)}</b> × ${n}` +
+    (res>=0 && res<=n ? ` · da pagare ${res} (${eur(res===n ? tot : res*rata)})` + (res && next ? ` · ultima il ${fmtD(addMonths(next,res-1))}` : '') : '');
 }
 function saveRata(id){
-  const o={tipo:$('r-t').value.trim()||'PayPal',prod:$('r-p').value.trim(),rata:num($('r-r').value),res:Math.max(0,parseInt($('r-n').value)||0)};
-  if(!o.rata) return toast('Inserisci l\'importo');
-  if(id) Object.assign(S.rate.find(x=>x.id===id),o); else S.rate.push({id:uid(),...o});
-  save(); closeSheet(); render(); toast('Salvato');
+  const old = id ? S.rate.find(x=>x.id===id) : null, done = old ? old.done : 0;
+  const {tot,n,res,next} = rataForm();
+  if(!tot) return toast('Inserisci l\'importo totale');
+  if(n<1) return toast('Inserisci il numero di rate');
+  if(isNaN(res) || res<0 || res>n) return toast('Rate da pagare: tra 0 e '+n);
+  if(res && !next) return toast('Inserisci la data della prossima rata');
+  const pre = n - res - done;
+  if(pre<0) return toast(`L'app ha già registrato ${done} rate: al massimo ${n-done} da pagare`);
+  if(res && next<today() && !confirm(`La prossima rata (${fmtD(next)}) è già passata: verrà registrata subito come pagata e tolta dal conto. Continuare?`)) return;
+  const o = {tipo:$('r-t').value.trim()||'PayPal', prod:$('r-p').value.trim(), acq:$('r-acq').value||null,
+    tot:round2(tot), n, rata:round2(tot/n), pre, done, first: res ? next : (old&&old.first)||null, fi: pre+done, conto:$('r-c').value};
+  if(old) Object.assign(old,o); else S.rate.push({id:uid(),...o});
+  save(); closeSheet(); payDueRate(); render(); toast('Salvato');
+}
+function delRata(id){
+  if(!confirm('Eliminare questa rata? I pagamenti già registrati restano tra i movimenti.')) return;
+  S.rate=S.rate.filter(x=>x.id!==id); save(); closeSheet(); render();
 }
 function addPL(){ const d=$('pl-d').value, v=num($('pl-v').value); if(!d||$('pl-v').value==='') return toast('Data e valore'); S.trading.push({id:uid(),d,v}); save(); ui.plMonth=+d.slice(5,7)-1; render(); }
 function delPL(id){ S.trading=S.trading.filter(t=>t.id!==id); save(); render(); }
@@ -756,7 +888,7 @@ function openSettings(){
     <div class="f"><label>Che dati sono?</label><select id="csv-k">
       <option value="mov">Movimenti (data;tipo;categoria;voce;importo;nota)</option>
       <option value="conti">Conti (gruppo;nome;saldo)</option>
-      <option value="rate">Rate (metodo;prodotto;rata;residue)</option>
+      <option value="rate">Rate (metodo;prodotto;rata;residue;prossima rata;conto)</option>
       <option value="inv">Investimenti (voce;livello;investito;attuale)</option>
       <option value="trading">Trading P&L (data;importo)</option></select></div>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px"><input type="checkbox" id="csv-rep" style="width:auto"> Sostituisci i dati esistenti di questo tipo</label>
@@ -809,7 +941,8 @@ function importCSV(f){
         out.push({id:uid(),g:c[0]||'Banche',n:c[1],v});
       } else if(kind==='rate'){
         const rt=csvNum(c[2]), rs=csvNum(c[3]); if(rt==null||rs==null) return skipped++;
-        out.push({id:uid(),tipo:c[0]||'PayPal',prod:c[1]||'',rata:rt,res:rs});
+        const ct = c[5] ? S.conti.find(x=>x.n.toLowerCase()===c[5].toLowerCase()) : null;
+        out.push({id:uid(), tipo:c[0]||'PayPal', prod:c[1]==='-'?'':(c[1]||''), acq:null, tot:round2(rt*rs), n:rs, rata:rt, pre:0, done:0, first:csvDate(c[4]), fi:0, conto:ct?ct.id:''});
       } else if(kind==='inv'){
         if(!c[0]) return skipped++;
         out.push({n:c[0],lvl:parseInt(c[1])||0,inv:csvNum(c[2]),eff:csvNum(c[3])});
@@ -820,13 +953,14 @@ function importCSV(f){
     });
     const key = {mov:'tx',conti:'conti',rate:'rate',inv:'inv',trading:'trading'}[kind];
     S[key] = rep ? out : S[key].concat(out);
+    if(key==='rate') payDueRate();
     save(); closeSheet(); render();
     toast(`Importati ${out.length}${skipped?` · ${skipped} righe saltate`:''}`);
   };
   r.readAsText(f);
 }
 function exportJSON(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'})); a.download='bilancio-backup.json'; a.click(); }
-function importJSON(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.tx) throw 0; S={...buildSeed(), ...d}; save(); closeSheet(); render(); toast('Backup importato'); }catch(e){ toast('File non valido'); } }; r.readAsText(f); }
+function importJSON(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.tx) throw 0; S={...buildSeed(), ...d}; afterLoad(); save(); closeSheet(); render(); toast('Backup importato'); }catch(e){ toast('File non valido'); } }; r.readAsText(f); }
 
 /* ============ SHEET ============ */
 function sheet(h){ $('sheet').innerHTML=h; $('ov').classList.add('on'); }
@@ -955,6 +1089,7 @@ async function openVault(key){
   try{ S = await cloud.get(); }
   catch(e){ cloud.key=null; return gate('error','Impossibile leggere o decifrare i dati: '+(e.code||e.message||'chiave non valida')); }
   cloud.v = S;
+  afterLoad();
   // primo accesso da un browser che aveva già dati in locale: li porto nel cloud e poi li tolgo da localStorage
   const loc = localStore.get();
   if(loc && SEZ.some(k=>(loc[k]||[]).length) && !SEZ.some(k=>S[k].length)){
@@ -1006,15 +1141,22 @@ document.addEventListener('visibilitychange', async ()=>{
   // app in background (iPhone): invia subito senza aspettare il timer
   if(document.visibilityState==='hidden'){ if(cloud.timer){ clearTimeout(cloud.timer); cloud.timer=null; cloud.flush(); } return; }
   // di nuovo in primo piano: ricarico se nel frattempo un altro dispositivo ha cambiato qualcosa
-  if(cloud.busy || cloud.timer || cloud.dirty().length || $('ov').classList.contains('on')) return;
+  if(cloud.busy || cloud.timer || cloud.dirty().length || $('ov').classList.contains('on')) return checkRate();
   try{
     const fresh = await cloud.get();
     if(cloud.busy || cloud.timer) return;
-    if(SEZ.some(k=>JSON.stringify(fresh[k])!==JSON.stringify(S[k]))){ S=fresh; cloud.v=S; render(); }
+    if(SEZ.some(k=>JSON.stringify(fresh[k])!==JSON.stringify(S[k]))){ S=fresh; cloud.v=S; S.rate=S.rate.map(migrateRata); render(); }
   }catch(e){}
+  checkRate();
 });
 window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
 
+// app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
+function checkRate(){ if((!CLOUD || cloud.key) && payDueRate()) render(); }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
+setInterval(checkRate, 60*60*1000);
+
+if(!CLOUD) afterLoad();
 showTab('home');
 boot();
 </script>

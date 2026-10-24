@@ -38,12 +38,17 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 2. **Movimenti**: lista con filtri (tipo, mese/anno, ricerca), pulsante + per aggiungere, tocca per modificare/eliminare.
 3. **Mensile**: tabella categorie × mesi (replica la tabella "Contabilità" del mio file Numbers), uscite/entrate.
 4. **Patrimonio**: conti divisi in Banche / Cash / Investimenti, saldo modificabile.
-5. **Altro**: Rate (con "Rata pagata" che scala le residue), Investimenti (investito, attuale, rendimento % ricalcolato), Trading (P&L giornaliero per mese).
+5. **Altro**: Rate, Investimenti (investito, attuale, rendimento % ricalcolato), Trading (P&L giornaliero per mese). Su iPad/Mac Rate e Investimenti hanno una voce nel menu laterale.
+
+### Rate
+- Due schede: **Da pagare** (piani in corso, con prossima scadenza e avanzamento) e **Pagate** (piani conclusi + storico dei pagamenti registrati).
+- Nuova rata: metodo, prodotto, data acquisto, importo totale, numero rate, rate da pagare, data prossima rata, conto da cui viene pagata.
+- **Pagamento automatico**: all'apertura dell'app (e ogni ora se resta aperta) ogni rata scaduta, oggi compreso, diventa un'uscita `Rate › <metodo>` con la data di scadenza, viene tolta dal saldo del conto scelto e segnata pagata. Il movimento ha id fisso `rt_<rata>_<n>` per non duplicarlo tra dispositivi.
 
 ## Modello dati (stato `S`)
 - `tx`: `{id, d:'YYYY-MM-DD', t:'u'|'e', cat, sub, amt, note}`: uscite con macro-categoria + sottovoce (Mezzi › Gommone, Casa › Spesa, Lavoro › Trading…); entrate per fonte + voce (Porto › CostaMed, Locali › Morgan…)
 - `conti`: `{id, g:'Banche'|'Cash'|'Investimenti', n, v}`
-- `rate`: `{id, tipo, prod, rata, res}`
+- `rate`: `{id, tipo, prod, acq, tot, n, rata, pre, done, first, fi, conto}`: piano di n rate mensili (`rata` = tot/n, l'ultima assorbe gli arrotondamenti). `pre` = già pagate prima di inserirla, `done` = pagate dall'app; la rata i scade `first` + (i − `fi`) mesi. `conto` = id del conto da cui escono i soldi. Il vecchio formato `{tipo, prod, rata, res}` viene convertito da solo (senza data: va completato con Modifica).
 - `inv`: `{n, lvl:0|1|2, inv, eff}` (i totali usano solo `lvl 0`)
 - `trading`: `{id, d, v}`
 
@@ -54,7 +59,7 @@ Fogli: CONTABILITA (uscite per macro-categoria/sottovoce × 12 mesi, entrate, si
 Separatore `;` o `,`, decimali con virgola, date `YYYY-MM-DD` o `DD/MM/YYYY`.
 - Movimenti: `data;tipo;categoria;voce;importo;nota` (tipo = uscita|entrata)
 - Conti: `gruppo;nome;saldo`
-- Rate: `metodo;prodotto;rata;residue`
+- Rate: `metodo;prodotto;rata;residue;prossima rata;conto` (ultime due facoltative; conto = nome del conto in Patrimonio)
 - Investimenti: `voce;livello;investito;attuale`
 - Trading: `data;importo`
 Opzione "Sostituisci" per cancellare i dati di quel tipo prima di importare.
