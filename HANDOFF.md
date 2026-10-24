@@ -54,11 +54,12 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 - **Pagamento automatico**: all'apertura dell'app (e ogni ora se resta aperta) ogni rata scaduta, oggi compreso, diventa un'uscita `Rate › <metodo>` con la data di scadenza, viene tolta dal saldo del conto scelto e segnata pagata. Il movimento ha id fisso `rt_<rata>_<n>` per non duplicarlo tra dispositivi.
 
 ## Modello dati (stato `S`)
-- `tx`: `{id, d:'YYYY-MM-DD', t:'u'|'e', cat, sub, amt, note}`: uscite con macro-categoria + sottovoce (Mezzi › Gommone, Casa › Spesa, Lavoro › Trading…); entrate per fonte + voce (Porto › CostaMed, Locali › Morgan…)
+- `tx`: `{id, d:'YYYY-MM-DD', t:'u'|'e', cat, sub, amt, note, carta?, pag?, conto?}`: `carta` = carta di credito (va nell'estratto conto); `pag` = 'carta' (debito/prepagata) | 'conto' (bonifico, bollettino) | 'contanti' con `conto`: l'importo esce subito dal saldo del conto e torna indietro se la spesa viene modificata o eliminata: uscite con macro-categoria + sottovoce (Mezzi › Gommone, Casa › Spesa, Lavoro › Trading…); entrate per fonte + voce (Porto › CostaMed, Locali › Morgan…)
 - `conti`: `{id, g:'Banche'|'Cash'|'Investimenti', n, v}`
 - `rate`: `{id, tipo, prod, acq, tot, n, rata, pre, done, first, fi, conto}`: piano di n rate mensili (`rata` = tot/n, l'ultima assorbe gli arrotondamenti). `pre` = già pagate prima di inserirla, `done` = pagate dall'app; la rata i scade `first` + (i − `fi`) mesi. `conto` = id del conto da cui escono i soldi. Il vecchio formato `{tipo, prod, rata, res}` viene convertito da solo (senza data: va completato con Modifica).
 - `inv`: `{n, lvl:0|1|2, inv, eff}` (i totali usano solo `lvl 0`)
 - `carte`: `{id, n, plafond, tipo:'giorno'|'fine', giorno, conto, pf, pfMin, pfComm, dal, flex:[], es:[]}`. Le spese con carta sono movimenti con `carta`. Ciclo = mese della spesa; addebito il `giorno` del mese dopo (ING Oro, 10) o a fine mese (BBVA). `dal` = primo mese gestito (prima si considera già addebitato). `flex` = PagoFlex `{id, tx, desc, imp, n, comm, m0, done}`; `es` = estratti addebitati `{m, d, spese, pf, tot, conto}`.
+- `opz`: impostazioni/flag (es. `contiBase`: conti ING, BBVA, N26, Buddy Bank, Wise creati una volta se mancavano)
 - `servizi`: elenco dei servizi delle rate (PayPal, Klarna, Scalapay, Findomestic, Compass…), modificabile.
 - `trading`: `{id, d, v}`
 

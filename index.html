@@ -331,7 +331,7 @@ const kdb = {
    Salvataggio ottimistico: lo stato in memoria cambia subito, l'invio parte dopo 400 ms
    e solo per le sezioni modificate, con nuovi tentativi se la rete manca. */
 const KEY = 'bilancio:v1';
-const SEZ = ['tx','conti','rate','inv','trading','carte','servizi'];
+const SEZ = ['tx','conti','rate','inv','trading','carte','servizi','opz'];
 const localStore = {
   get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
   set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} },
@@ -549,10 +549,49 @@ function seedCarte(){
     {id:'bbva', n:'BBVA', plafond:1000, tipo:'fine', giorno:10, conto:find(/bbva/i), pf:false, pfMin:200, pfComm:0.5, dal:thisMonth(), flex:[], es:[]}
   ];
 }
+// conti con carta di debito/prepagata: se mancano li creo una volta sola (saldo 0, da compilare in Patrimonio)
+const CONTI_BASE = [['ING',/\bing\b/i],['BBVA',/bbva/i],['N26',/n26/i],['Buddy Bank',/buddy/i],['Wise',/wise/i]];
+function seedConti(){
+  CONTI_BASE.forEach(([n,re])=>{ if(!S.conti.some(c=>re.test(c.n))) S.conti.push({id:uid(), g:'Banche', n, v:0}); });
+  carte().forEach(k=>{ if(!k.conto){ const m = CONTI_BASE.find(([n,re])=>re.test(k.n)); const c = m && S.conti.find(c=>m[1].test(c.n)); if(c) k.conto=c.id; } });
+}
+/* Metodo di pagamento di una spesa:
+   carta di credito → t.carta (lascia il conto con l'estratto conto)
+   carta di debito/prepagata → t.pag='carta', t.conto  |  conto (bonifico, bollettino) → t.pag='conto', t.conto
+   contanti → t.pag='contanti', t.conto (conto del gruppo Cash). Con pag l'importo esce subito dal conto. */
+const hasCredito = contoId => carte().some(k=>k.conto===contoId);
+const debitoName = c => (hasCredito(c.id) ? 'Carta di debito ' : 'Carta ') + c.n;
+function pagLabel(t){
+  if(t.carta) return 'Carta di credito '+cartaName(t.carta);
+  const c = S.conti.find(x=>x.id===t.conto);
+  if(!c || !t.pag) return '';
+  return t.pag==='carta' ? debitoName(c) : t.pag==='conto' ? 'Conto '+c.n : 'Contanti';
+}
+const pagValue = t => t.carta ? 'k:'+t.carta : t.pag && t.conto ? `${t.pag==='conto'?'c':t.pag==='contanti'?'x':'d'}:${t.conto}` : '';
+function pagOptions(sel){
+  const opt = (v,l) => `<option value="${v}" ${v===sel?'selected':''}>${esc(l)}</option>`;
+  const banche = S.conti.filter(c=>c.g==='Banche'), cash = S.conti.filter(c=>c.g==='Cash');
+  return opt('','Non specificato') +
+    (carte().length ? `<optgroup label="Carte di credito">${carte().map(k=>opt('k:'+k.id,'Carta di credito '+k.n)).join('')}</optgroup>` : '') +
+    (banche.length ? `<optgroup label="Carte di debito e prepagate">${banche.map(c=>opt('d:'+c.id, debitoName(c))).join('')}</optgroup>
+      <optgroup label="Dal conto (bonifico, bollettino…)">${banche.map(c=>opt('c:'+c.id, 'Conto '+c.n)).join('')}</optgroup>` : '') +
+    (cash.length ? `<optgroup label="Contanti">${cash.map(c=>opt('x:'+c.id, 'Contanti · '+c.n)).join('')}</optgroup>` : '');
+}
+function pagParse(v){
+  const [k,id] = v.split(':');
+  return k==='k' ? {carta:id, pag:'', conto:''} : id ? {carta:'', pag:{d:'carta',c:'conto',x:'contanti'}[k], conto:id} : {carta:'', pag:'', conto:''};
+}
+// effetto di una spesa sul saldo del conto (sign -1 per annullarlo)
+function applyPag(t, sign=1){
+  if(!t || !t.pag || !t.conto) return;
+  const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='u'?1:-1)*t.amt);
+}
 // dopo ogni caricamento dei dati (avvio, sblocco, backup importato, ritorno in primo piano)
 function afterLoad(){
   S.rate = S.rate.map(migrateRata);
-  if(!S.carte) S.carte = seedCarte();
+  if(!S.opz) S.opz = {};
+  if(!S.opz.contiBase){ seedConti(); S.opz.contiBase = true; save(); }
+  if(!S.carte){ S.carte = seedCarte(); seedConti(); }
   if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
   payDueRate(); settleCards();
@@ -685,7 +724,7 @@ function renderMovList(){
     const c = colorOf(t.cat);
     out += `<div class="tx" onclick="openTx('${t.id}')">
       <div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>
-      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, t.carta?'💳 '+cartaName(t.carta):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
+      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
       <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
   });
   $('mov-list').innerHTML = out;
@@ -1080,7 +1119,7 @@ function openTx(id, carta){
     <div class="f" id="t-newc-w" style="display:none"><label>Nuova categoria</label><input id="t-newc" placeholder="es. Salute"></div>
     <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
     <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
-    <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label>Pagato con</label><select id="t-k" ${t.rid||t.pf?'disabled':''}><option value="">Conto / contanti</option>${carte().map(c=>`<option value="${c.id}" ${c.id===t.carta?'selected':''}>Carta ${esc(c.n)}</option>`).join('')}</select>
+    <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label>Pagato con</label><select id="t-k" ${t.rid||t.pf?'disabled':''}>${pagOptions(id ? pagValue(t) : carta ? 'k:'+carta : ui.lastPag||'')}</select>
       ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con PagoFlex: per cambiarla annulla prima il PagoFlex nella sezione Carte.</p>':''}</div>
     <button class="btn" onclick="saveTx('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delTx('${id}')">Elimina</button>`:''}
@@ -1111,18 +1150,23 @@ function saveTx(id){
   if(!o.cat) return toast('Scegli una categoria');
   if(!o.d) return toast('Inserisci la data');
   const old = id && S.tx.find(x=>x.id===id);
-  if(!(old && (old.rid || old.pf))) o.carta = o.t==='u' ? $('t-k').value : '';
+  if(!(old && (old.rid || old.pf))) Object.assign(o, o.t==='u' ? pagParse($('t-k').value) : {carta:'', pag:'', conto:''});
   // una spesa di un estratto conto già addebitato non può cambiare carta né importo: il conto è già stato scalato
   const chiuso = t => t && t.carta && (()=>{ const c=carte().find(x=>x.id===t.carta); return c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
   if(chiuso(old) && (o.carta!==old.carta || o.amt!==old.amt || o.d.slice(0,7)!==old.d.slice(0,7))) return toast('Estratto conto già addebitato: importo, mese e carta non si possono più cambiare');
   if(chiuso({...o, carta:o.carta}) && !(old && old.carta===o.carta && old.d.slice(0,7)===o.d.slice(0,7))) return toast('L\'estratto conto di quel mese è già stato addebitato');
   if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('PagoFlex già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
+  // carta di debito / conto / contanti: l'importo esce subito dal conto (prima tolgo l'effetto della versione vecchia)
+  if(old) applyPag(old, -1);
   if(old) Object.assign(old,o); else S.tx.push({id:uid(),...o});
+  applyPag(old || S.tx[S.tx.length-1]);
+  if(o.t==='u' && !(old && (old.rid || old.pf))) ui.lastPag = $('t-k').value;
   save(); closeSheet(); render(); toast('Movimento salvato');
 }
 function delTx(id){
   const t = S.tx.find(x=>x.id===id);
   if(t.pf) return toast('Spesa con PagoFlex: annulla prima il PagoFlex nella sezione Carte');
+  applyPag(t, -1); // restituisce l'importo al conto
   S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato');
 }
 
