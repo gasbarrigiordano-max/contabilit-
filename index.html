@@ -108,7 +108,21 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .acct{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .acct:last-child{border:none}
 .acct-n{display:flex;align-items:center;gap:12px;min-width:0}
-.acct-n span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct-n>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct-n small{display:block;font-size:11px;color:var(--ink3);margin-top:1px}
+/* patrimonio: riepilogo con composizione */
+.pat-hero{display:grid;gap:16px}
+.pat-hero .kpi b{font-size:30px;letter-spacing:-.02em}
+.pat-bar{display:flex;gap:3px;height:10px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.25)}
+.pat-bar div{min-width:4px}
+.pat-leg{display:flex;flex-direction:column;gap:7px;margin-top:12px;font-size:13px}
+.pat-leg div{display:flex;align-items:center;gap:8px}
+.pat-leg i{width:9px;height:9px;border-radius:3px;flex:none}
+.pat-leg span{flex:1;color:var(--ink2)}
+.pat-hero .pat-leg b{font-size:13px;font-weight:600;letter-spacing:0}
+.pat-leg em{font-style:normal;font-size:11px;color:var(--ink3);width:34px;text-align:right}
+.gh .dot{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:8px;vertical-align:1px}
+.pat-add{margin-top:18px}
 .logo{width:34px;height:34px;border-radius:9px;flex:none;object-fit:cover;display:block}
 .logo.l{font-style:normal;display:grid;place-items:center;font-weight:800;font-size:13px;background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
 .gh{display:flex;justify-content:space-between;align-items:baseline;margin:20px 2px 6px}
@@ -229,8 +243,13 @@ nav button.on{color:var(--acc)}
   .mx th,.mx td{padding:8px 8px}
 
   /* Patrimonio: Banche / Cash / Investimenti affiancati */
-  .pgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  /* Patrimonio: riepilogo su due colonne; Banche a sinistra, Cash e Investimenti impilati a destra */
+  .pat-hero{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);align-items:center;gap:40px;padding:22px 24px}
+  .pat-hero .kpi b{font-size:38px}
+  .pgs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"banche cash" "banche investimenti";grid-template-rows:auto 1fr;column-gap:16px;align-items:start}
+  .pg-banche{grid-area:banche} .pg-cash{grid-area:cash} .pg-investimenti{grid-area:investimenti}
   .pgs .gh{margin-top:20px}
+  .pat-add{width:auto;padding:10px 20px;display:block;margin-left:auto}
 
   /* Altro */
   .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -785,19 +804,24 @@ function contoIcon(c){
   const m = LOGO_RE.find(([k,re])=>re.test(c.n));
   return m ? `<img class="logo" src="${LOGHI[m[0]]}" alt="">` : `<i class="logo l">${esc((c.n||'?')[0].toUpperCase())}</i>`;
 }
+const GRP = [['Banche','var(--acc)'],['Cash','var(--warn)'],['Investimenti','#60a5fa']];
 function renderPat(){
-  const groups = ['Banche','Cash','Investimenti'];
-  const patr = sum(S.conti.map(c=>c.v)), liq = sum(S.conti.filter(c=>c.g!=='Investimenti').map(c=>c.v));
-  let html = `<div class="card hero kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
-    <div class="row" style="margin-top:14px"><div><small>Liquidità</small><b class="mono" style="font-size:16px">${eur(liq,0)}</b></div>
-    <div style="text-align:right"><small>Investimenti</small><b class="mono" style="font-size:16px">${eur(patr-liq,0)}</b></div></div></div>`;
-  html += '<div class="pgs">';
-  groups.forEach(g=>{
+  const patr = sum(S.conti.map(c=>c.v)), base = patr>0 ? patr : 1;
+  const tot = g => sum(S.conti.filter(c=>c.g===g).map(c=>c.v));
+  const pct = v => v>0 && patr>0 ? Math.round(v/base*100)+'%' : '–';
+  // riepilogo: totale + barra della composizione (Banche / Cash / Investimenti)
+  let html = `<div class="card hero pat-hero">
+    <div class="kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
+      <div class="note" style="color:#7fcfae;margin-top:4px">Liquidità ${eur(tot('Banche')+tot('Cash'),0)}</div></div>
+    <div><div class="pat-bar">${GRP.map(([g,col])=>tot(g)>0?`<div style="flex:${tot(g)};background:${col}"></div>`:'').join('')}</div>
+      <div class="pat-leg">${GRP.map(([g,col])=>`<div><i style="background:${col}"></i><span>${g}</span><b class="mono">${eur(tot(g),0)}</b><em class="mono">${pct(tot(g))}</em></div>`).join('')}</div></div>
+  </div><div class="pgs">`;
+  GRP.forEach(([g,col])=>{
     const items = S.conti.filter(c=>c.g===g);
-    html += `<div><div class="gh"><b>${g}</b><span class="mono">${eur(sum(items.map(c=>c.v)),0)}</span></div><div class="card" style="padding:4px 14px">
-      ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span class="acct-n">${contoIcon(c)}<span>${esc(c.n)}</span></span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div></div>`;
+    html += `<div class="pg-${g.toLowerCase()}"><div class="gh"><b><i class="dot" style="background:${col}"></i>${g}</b><span class="mono">${eur(tot(g),0)}</span></div><div class="card" style="padding:4px 14px">
+      ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span class="acct-n">${contoIcon(c)}<span>${esc(c.n)}<small>${pct(c.v)} del patrimonio</small></span></span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div></div>`;
   });
-  html += `</div><button class="btn ghost" style="margin-top:18px" onclick="openConto()">+ Aggiungi conto</button>`;
+  html += `</div><button class="btn ghost pat-add" onclick="openConto()">+ Aggiungi conto</button>`;
   $('v-pat').innerHTML = html;
 }
 function openConto(id){
