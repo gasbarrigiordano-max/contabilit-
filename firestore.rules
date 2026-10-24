@@ -17,12 +17,12 @@ service cloud.firestore {
     match /bilancio/{uid} {
       allow read, write: if isOwner(uid);
 
-      // sezioni cifrate; kid deve corrispondere al sale attuale, così un dispositivo con la
+      // sezioni cifrate (tx, conti, rate, carte…: qualsiasi nome in minuscolo); kid deve corrispondere al sale attuale, così un dispositivo con la
       // passphrase vecchia non può sovrascrivere dati già ricifrati con quella nuova
       match /sez/{sez} {
         allow read: if isOwner(uid);
         allow create, update: if isOwner(uid)
-          && sez in ['tx', 'conti', 'rate', 'inv', 'trading']
+          && sez.matches('^[a-z]{2,16}$')
           && request.resource.data.kid == getAfter(/databases/$(database)/documents/bilancio/$(uid)).data.salt;
       }
     }

@@ -271,6 +271,7 @@ nav button.on{color:var(--acc)}
   <button data-t="mx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mensile</button>
   <button data-t="pat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>Patrimonio</button>
   <button data-t="rate" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Rate</button>
+  <button data-t="carte" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/><circle cx="16.5" cy="15" r="1.2"/><circle cx="18.8" cy="15" r="1.2"/></svg>Carte</button>
   <button data-t="inv" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Investimenti</button>
   <button data-t="altro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>Altro</button>
 </nav>
@@ -330,7 +331,7 @@ const kdb = {
    Salvataggio ottimistico: lo stato in memoria cambia subito, l'invio parte dopo 400 ms
    e solo per le sezioni modificate, con nuovi tentativi se la rete manca. */
 const KEY = 'bilancio:v1';
-const SEZ = ['tx','conti','rate','inv','trading'];
+const SEZ = ['tx','conti','rate','inv','trading','carte','servizi'];
 const localStore = {
   get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
   set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} },
@@ -387,7 +388,7 @@ const cloud = {
       const meta={v:1, salt:b64(salt), iter:KDF_ITER, check:await encrypt(key,CHECK,'check')};
       const b=this.db.batch(), last={};
       b.set(this.ref(), {...meta, updated:ts()}, {merge:true});
-      for(const k of SEZ){ last[k]=JSON.stringify(S[k]); b.set(this.ref().collection('sez').doc(k), {kid:meta.salt, ...await encrypt(key,last[k],k), updated:ts()}); }
+      for(const k of SEZ){ last[k]=JSON.stringify(S[k]??[]); b.set(this.ref().collection('sez').doc(k), {kid:meta.salt, ...await encrypt(key,last[k],k), updated:ts()}); }
       await b.commit();
       const kept = await kdb.get(this.user.uid);
       Object.assign(this, {key, meta, last, v:S});
@@ -403,7 +404,7 @@ const PAL = ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923
 
 let S = CLOUD ? buildSeed() : (localStore.get() || buildSeed());
 const now = new Date();
-const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', rateTab:'due', plMonth: now.getMonth() };
+const ui = { tab:'home', year: now.getFullYear(), month: now.getMonth(), tipo:'all', q:'', mxTipo:'u', altro:'rate', rateTab:'due', carta:'', plMonth: now.getMonth() };
 
 function buildSeed(){ return { tx:[], conti:[], rate:[], inv:[], trading:[] }; }
 function save(){ store.set(S); }
@@ -439,6 +440,10 @@ const pagate = r => Math.min(r.n, r.pre + r.done);
 const residue = r => r.n - pagate(r);
 const daPagare = r => round2(sum(Array.from({length:residue(r)}, (_,j)=>quota(r, pagate(r)+j))));
 const contoName = id => (S.conti.find(c=>c.id===id)||{}).n || '';
+const carte = () => S.carte || [];
+const cartaName = id => (carte().find(c=>c.id===id)||{}).n || '';
+const daDove = o => o.carta ? cartaName(o.carta) : contoName(o.conto); // "Pagata da" di una rata o di un movimento
+const servizi = () => S.servizi || [];
 // rate con scadenza nel mese ym ('YYYY-MM'), pagate o no
 function rateDelMese(ym){
   const out = [];
@@ -450,6 +455,8 @@ function rateDelMese(ym){
       if(m===ym) out.push({r, i, d, amt:quota(r,i), paid:i<pagate(r)});
     }
   });
+  // rate PagoFlex addebitate con l'estratto conto della carta
+  carte().forEach(c=>(c.flex||[]).forEach(f=>{ for(let i=0;i<f.n;i++){ const d=stmtDate(c, addYM(f.m0,i)); if(d.slice(0,7)===ym) out.push({r:{tipo:'PagoFlex'}, i, d, amt:pfRata(f,i), paid:i<f.done}); } }));
   return out;
 }
 // vecchio formato {tipo, prod, rata, res} → piano senza data (va completato con Modifica)
@@ -468,8 +475,9 @@ function payDueRate(){
       if(d>t) break;
       const id = `rt_${r.id}_${i}`, amt = quota(r,i);
       if(!S.tx.some(x=>x.id===id)){
-        S.tx.push({id, d, t:'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.conto||''});
-        const c = S.conti.find(c=>c.id===r.conto); if(c) c.v = round2(c.v - amt);
+        // pagata con carta: diventa una spesa della carta e lascia il conto con l'estratto conto
+        S.tx.push({id, d, t:'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.carta?'':(r.conto||''), carta:r.carta||''});
+        const c = !r.carta && S.conti.find(c=>c.id===r.conto); if(c) c.v = round2(c.v - amt);
       }
       r.done++; k++;
     }
@@ -477,8 +485,78 @@ function payDueRate(){
   if(k){ save(); toast(k===1 ? '1 rata pagata in automatico' : `${k} rate pagate in automatico`); }
   return k;
 }
+/* ---- Carte di credito ----
+   {id, n, plafond, tipo:'giorno'|'fine', giorno, conto, pf, pfMin, pfComm, dal, flex:[], es:[]}
+   Le spese con carta sono movimenti con `carta`. Il ciclo è il mese della spesa: con tipo 'giorno'
+   si addebita il `giorno` del mese dopo, con 'fine' l'ultimo giorno dello stesso mese.
+   `dal` = primo mese gestito dall'app (i mesi prima si considerano già addebitati fuori dall'app).
+   PagoFlex {id, tx, desc, imp, n, comm, m0, done}: la spesa tx esce dall'estratto conto e la rata i
+   (capitale + commissione mensile comm% sull'importo) si addebita con l'estratto del mese m0 + i.
+   es = estratti conto già addebitati {m, d, spese, pf, tot}. */
+const addYM = (ym,k) => addMonths(ym+'-01',k).slice(0,7);
+const lastDay = ym => ymd(new Date(+ym.slice(0,4), +ym.slice(5,7), 0));
+const stmtDate = (c,ym) => c.tipo==='fine' ? lastDay(ym) : addMonths(ym+'-'+String(Math.min(c.giorno||10,28)).padStart(2,'0'), 1);
+const pfCap = (f,i) => i===f.n-1 ? round2(f.imp - round2(f.imp/f.n)*(f.n-1)) : round2(f.imp/f.n);
+const pfFee = f => round2(f.imp*(f.comm||0)/100);
+const pfRata = (f,i) => round2(pfCap(f,i) + pfFee(f));
+const pfResiduo = f => round2(sum(Array.from({length:f.n-f.done}, (_,j)=>pfCap(f, f.done+j))));
+const settled = (c,ym) => ym < c.dal || (c.es||[]).some(e=>e.m===ym);
+// spese della carta nel ciclo ym (escluse quelle passate a PagoFlex)
+const cartaSpese = (c,ym) => S.tx.filter(t=>t.carta===c.id && !t.pf && t.d.slice(0,7)===ym);
+const mdiff = (a,b) => (+b.slice(0,4) - +a.slice(0,4))*12 + (+b.slice(5,7) - +a.slice(5,7)); // mesi da a a b ('YYYY-MM')
+// rate PagoFlex che cadono nel ciclo ym
+const pfDelCiclo = (c,ym) => (c.flex||[]).map(f=>({f, i:mdiff(f.m0,ym)})).filter(x=>x.i>=0 && x.i<x.f.n);
+// cicli non ancora addebitati che hanno qualcosa da addebitare, dal più vecchio
+function cicliAperti(c){
+  const m = new Set();
+  S.tx.forEach(t=>{ if(t.carta===c.id && !t.pf) m.add(t.d.slice(0,7)); });
+  (c.flex||[]).forEach(f=>{ for(let i=f.done;i<f.n;i++) m.add(addYM(f.m0,i)); });
+  return [...m].filter(ym=>!settled(c,ym)).sort();
+}
+const cicloTot = (c,ym) => round2(sum(cartaSpese(c,ym).map(t=>t.amt)) + sum(pfDelCiclo(c,ym).map(x=>pfRata(x.f,x.i))));
+// plafond impegnato: spese non ancora addebitate + capitale PagoFlex ancora da restituire
+function plafondUsato(c){
+  const spese = sum(cicliAperti(c).map(ym=>sum(cartaSpese(c,ym).map(t=>t.amt))));
+  return round2(spese + sum((c.flex||[]).map(pfResiduo)));
+}
+// addebito automatico degli estratti conto scaduti (giorno di addebito compreso)
+function settleCards(){
+  const t = today(); let k = 0;
+  carte().forEach(c=>{
+    c.es = c.es || [];
+    for(const ym of cicliAperti(c)){
+      const d = stmtDate(c, ym); if(d>t) break;
+      const spese = round2(sum(cartaSpese(c,ym).map(x=>x.amt))), rate = pfDelCiclo(c,ym).filter(x=>x.i===x.f.done);
+      const pf = round2(sum(rate.map(x=>pfRata(x.f,x.i))));
+      rate.forEach(({f,i})=>{
+        const fee = pfFee(f), id = `pfc_${f.id}_${i}`;
+        if(fee && !S.tx.some(x=>x.id===id)) S.tx.push({id, d, t:'u', cat:'Carte', sub:'Commissioni PagoFlex', amt:fee, note:`${f.desc} · rata ${i+1}/${f.n}`});
+        f.done++;
+      });
+      const tot = round2(spese+pf), conto = S.conti.find(x=>x.id===c.conto);
+      if(conto) conto.v = round2(conto.v - tot);
+      c.es.push({m:ym, d, spese, pf, tot, conto:c.conto||''});
+      k++;
+    }
+  });
+  if(k){ save(); toast(k===1 ? 'Addebitato 1 estratto conto della carta' : `Addebitati ${k} estratti conto delle carte`); }
+  return k;
+}
+function seedCarte(){
+  const find = re => (S.conti.find(c=>re.test(c.n))||{}).id || '';
+  return [
+    {id:'ing-oro', n:'ING Oro', plafond:1500, tipo:'giorno', giorno:10, conto:find(/\bing\b/i), pf:true, pfMin:200, pfComm:0.5, dal:thisMonth(), flex:[], es:[]},
+    {id:'bbva', n:'BBVA', plafond:1000, tipo:'fine', giorno:10, conto:find(/bbva/i), pf:false, pfMin:200, pfComm:0.5, dal:thisMonth(), flex:[], es:[]}
+  ];
+}
 // dopo ogni caricamento dei dati (avvio, sblocco, backup importato, ritorno in primo piano)
-function afterLoad(){ S.rate = S.rate.map(migrateRata); payDueRate(); }
+function afterLoad(){
+  S.rate = S.rate.map(migrateRata);
+  if(!S.carte) S.carte = seedCarte();
+  if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
+  S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
+  payDueRate(); settleCards();
+}
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
 function periodTx(){ return S.tx.filter(inPeriod); }
@@ -491,7 +569,7 @@ WIDE.addEventListener('change', ()=>showTab(ui.tab==='altro' && SUB.includes(ui.
 
 /* ============ NAV / PERIODO ============ */
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
-const SUB = ['rate','inv']; // su schermo largo hanno una voce nel menu, su telefono stanno in Altro
+const SUB = ['rate','carte','inv']; // su schermo largo hanno una voce nel menu, su telefono stanno in Altro
 function showTab(t){
   if(SUB.includes(t)){ ui.altro=t; if(!WIDE.matches) t='altro'; }
   else if(t==='altro' && WIDE.matches) ui.altro='trading';
@@ -500,7 +578,7 @@ function showTab(t){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+(SUB.includes(t)?'altro':t)));
   $('fab').classList.toggle('on', t==='home'||t==='mov');
   $('chips').style.display = (t==='home'||t==='mov') ? 'flex' : 'none';
-  $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',rate:'Rate',inv:'Investimenti',altro:'Altro'}[t];
+  $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',rate:'Rate',carte:'Carte di credito',inv:'Investimenti',altro:'Altro'}[t];
   $('period-bar').style.display = (t==='pat' || SUB.includes(t)) ? 'none' : 'block';
   render(); window.scrollTo(0,0);
 }
@@ -516,7 +594,7 @@ function renderChips(){
 /* ============ RENDER ============ */
 function render(){
   renderChips();
-  ({home:renderHome, mov:renderMov, mx:renderMx, pat:renderPat, altro:renderAltro, rate:renderAltro, inv:renderAltro})[ui.tab]();
+  ({home:renderHome, mov:renderMov, mx:renderMx, pat:renderPat, altro:renderAltro, rate:renderAltro, carte:renderAltro, inv:renderAltro})[ui.tab]();
 }
 
 /* ---- Panoramica ---- */
@@ -607,7 +685,7 @@ function renderMovList(){
     const c = colorOf(t.cat);
     out += `<div class="tx" onclick="openTx('${t.id}')">
       <div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>
-      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
+      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, t.carta?'💳 '+cartaName(t.carta):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
       <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
   });
   $('mov-list').innerHTML = out;
@@ -687,10 +765,12 @@ function delConto(id){ S.conti=S.conti.filter(x=>x.id!==id); save(); closeSheet(
 
 /* ---- Altro: Rate / Investimenti / Trading ---- */
 function renderAltro(){
-  const tabs = [['rate','Rate'],['inv','Investimenti'],['trading','Trading']];
+  const tabs = [['rate','Rate'],['carte','Carte'],['inv','Invest.'],['trading','Trading']];
   let body='';
   if(ui.altro==='rate'){
     body = renderRate();
+  } else if(ui.altro==='carte'){
+    body = renderCarte();
   } else if(ui.altro==='inv'){
     const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
     const ti = sum(top.map(r=>r.inv||0)), te = sum(top.map(r=>r.eff||0));
@@ -723,24 +803,28 @@ function renderRate(){
     <button class="${ui.rateTab==='due'?'on':''}" onclick="ui.rateTab='due';render()">Da pagare · ${att.length}</button>
     <button class="${ui.rateTab==='paid'?'on':''}" onclick="ui.rateTab='paid';render()">Pagate · ${fin.length}</button></div>`;
   const titolo = r => esc(r.prod || r.tipo || 'Rata');
+  const top = `<div class="grid2" style="margin-bottom:12px"><button class="btn" onclick="openRata()">+ Nuova rata</button><button class="btn ghost" onclick="openServizi()">Servizi</button></div>`;
   if(ui.rateTab==='due'){
     const ym = thisMonth(), nome = MESI[now.getMonth()].toLowerCase();
     const next = r => r.first ? dueDate(r, pagate(r)) : '9999';
-    const cards = att.sort((a,b)=>next(a).localeCompare(next(b))).map(r=>{
+    const card = r=>{
       const pm = rateDelMese(ym).find(x=>x.r===r && x.paid);
       const info = r.first
         ? `Prossima: <b style="color:var(--ink)">${fmtD(next(r))}</b> · ${eur(quota(r,pagate(r)))}`
         : `<span style="color:var(--warn)">Manca la data della prossima rata: tocca Modifica</span>`;
       return `<div class="card rate">
-        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.n}${r.conto?` · da ${esc(contoName(r.conto))}`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
+        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${eur(r.rata)} × ${r.n}${daDove(r)?` · da ${esc(daDove(r))}`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
         <div class="bar" style="margin:4px 0 8px"><div style="width:${pagate(r)/r.n*100}%;background:var(--acc)"></div></div>
         <div class="row"><div class="note">${pagate(r)}/${r.n} pagate · ${info}${pm?`<br><span class="pos">✓ ${nome} pagata il ${fmtD(pm.d)}</span>`:''}</div>
           <button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button></div></div>`;
-    }).join('');
-    return seg + `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(sum(att.map(r=>r.rata)))}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(sum(att.map(daPagare)))}</b></div></div>
-      <h2 class="sec">Rate in corso</h2><div class="rgrid">${cards || '<div class="empty">Nessuna rata da pagare 🎉</div>'}</div>
-      <button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>
-      <p class="note" style="margin-top:10px">Nel giorno della scadenza (o alla prima apertura dell'app dopo) la rata viene registrata tra le uscite, categoria Rate, e tolta dal conto scelto.</p>`;
+    };
+    // un gruppo per servizio; i servizi senza rate in corso restano nascosti
+    const gruppi = [...new Set(att.map(r=>r.tipo||'Altro'))].sort((a,b)=>{ const i=x=>{ const k=servizi().indexOf(x); return k<0?99:k; }; return i(a)-i(b); });
+    const html = gruppi.map(g=>{ const l = att.filter(r=>(r.tipo||'Altro')===g).sort((a,b)=>next(a).localeCompare(next(b)));
+      return `<div class="gh"><b>${esc(g)}</b><span class="mono">${eur(sum(l.map(r=>r.rata)))}/mese · resta ${eur(sum(l.map(daPagare)))}</span></div><div class="rgrid">${l.map(card).join('')}</div>`; }).join('');
+    return top + seg + `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(sum(att.map(r=>r.rata)))}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(sum(att.map(daPagare)))}</b></div></div>
+      ${html || '<div class="empty">Nessuna rata da pagare 🎉</div>'}
+      <p class="note" style="margin-top:14px">Nel giorno della scadenza (o alla prima apertura dell'app dopo) la rata viene registrata tra le uscite, categoria Rate, e tolta dal conto scelto; se è pagata con una carta di credito finisce nel suo estratto conto.</p>`;
   }
   const storico = S.tx.filter(t=>t.rid).sort((a,b)=>b.d.localeCompare(a.d) || b.id.localeCompare(a.id));
   const ultima = r => (storico.find(t=>t.rid===r.id)||{}).d;
@@ -748,9 +832,9 @@ function renderRate(){
   storico.forEach(t=>{
     const m = `${MESI[txMonth(t)]} ${txYear(t)}`;
     if(m!==cur){ cur=m; righe+=`<div class="day">${m.toUpperCase()}</div>`; }
-    righe += `<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.note.split(' · ')[0]||t.sub)}</b><small>${fmtD(t.d)} · ${esc(t.sub)} · ${esc(t.note.split(' · ')[1]||'')}${t.conto&&contoName(t.conto)?` · da ${esc(contoName(t.conto))}`:''}</small></div><b class="mono">-${eur(t.amt)}</b></div>`;
+    righe += `<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.note.split(' · ')[0]||t.sub)}</b><small>${fmtD(t.d)} · ${esc(t.sub)} · ${esc(t.note.split(' · ')[1]||'')}${daDove(t)?` · da ${esc(daDove(t))}`:''}</small></div><b class="mono">-${eur(t.amt)}</b></div>`;
   });
-  return seg + `<h2 class="sec" style="margin-top:0">Rate concluse</h2><div class="rgrid">${fin.map(r=>`<div class="card rate" onclick="openRata('${r.id}')" style="cursor:pointer">
+  return top + seg + `<h2 class="sec" style="margin-top:0">Rate concluse</h2><div class="rgrid">${fin.map(r=>`<div class="card rate" onclick="openRata('${r.id}')" style="cursor:pointer">
       <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${esc(r.tipo)} · ${r.n} rate${ultima(r)?` · ultima il ${fmtD(ultima(r))}`:''}</div></div><b class="mono">${eur(r.tot)}</b></div>
       <span class="pill">✓ saldata</span></div>`).join('') || '<div class="empty">Nessuna rata conclusa</div>'}</div>
     <h2 class="sec">Pagamenti registrati</h2>${righe || '<div class="empty">Ancora nessun pagamento registrato dall\'app</div>'}`;
@@ -760,11 +844,14 @@ function openRata(id){
   const acq = r ? (r.acq||'') : today();
   const dec = x => x ? String(x).replace('.',',') : ''; // 229.5 → 229,5 nel campo
   const v = r ? {tipo:r.tipo, prod:r.prod, acq, tot:dec(r.tot), n:r.n||'', res:residue(r), next:r.first ? dueDate(r,pagate(r)) : addMonths(today(),1), conto:r.conto}
-              : {tipo:'PayPal', prod:'', acq, tot:'', n:'', res:'', next:addMonths(acq,1), conto:(S.conti.find(c=>c.g==='Banche')||{}).id||''};
-  const conti = `<option value="">Nessun conto (non scalare)</option>` + S.conti.map(c=>`<option value="${c.id}" ${c.id===v.conto?'selected':''}>${esc(c.n)} · ${c.g}</option>`).join('');
+              : {tipo:servizi()[0]||'PayPal', prod:'', acq, tot:'', n:'', res:'', next:addMonths(acq,1), conto:(S.conti.find(c=>c.g==='Banche')||{}).id||''};
+  const sel = r && r.carta ? 'k:'+r.carta : v.conto ? 'c:'+v.conto : '';
+  const conti = `<option value="">Nessun conto (non scalare)</option><optgroup label="Conti">` + S.conti.map(c=>`<option value="c:${c.id}" ${'c:'+c.id===sel?'selected':''}>${esc(c.n)} · ${c.g}</option>`).join('')
+    + `</optgroup><optgroup label="Carte di credito">` + carte().map(c=>`<option value="k:${c.id}" ${'k:'+c.id===sel?'selected':''}>${esc(c.n)}</option>`).join('') + '</optgroup>';
+  const srv = [...new Set([...servizi(), v.tipo].filter(Boolean))];
   sheet(`<h3>${id?'Modifica rata':'Nuova rata'}</h3>
     <div class="grid2">
-      <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(v.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>AliExpress<option>Findomestic<option>Compass<option>Scalapay<option>Carta di credito</datalist></div>
+      <div class="f"><label>Servizio</label><select id="r-t" data-prev="${esc(v.tipo)}" onchange="nuovoServizio(this)">${srv.map(x=>`<option ${x===v.tipo?'selected':''}>${esc(x)}</option>`).join('')}<option value="__new">+ Nuovo servizio…</option></select></div>
       <div class="f"><label>Prodotto</label><input id="r-p" value="${esc(v.prod)}" placeholder="es. iPhone"></div>
       <div class="f"><label>Data acquisto</label><input type="date" id="r-acq" value="${v.acq}" oninput="rataAcq()"></div>
       <div class="f"><label>Importo totale (€)</label><input id="r-tot" inputmode="decimal" value="${v.tot}" placeholder="0,00 €" oninput="rataPrev()"></div>
@@ -774,7 +861,7 @@ function openRata(id){
       <div class="f"><label>Pagata da</label><select id="r-c">${conti}</select></div>
     </div>
     <p class="note" id="r-prev" style="margin:0 0 12px"></p>
-    <p class="note" style="margin:-4px 0 12px">Le rate successive scadono ogni mese nello stesso giorno. Per la carta di credito aggiungi un conto "Carta di credito" in Patrimonio.</p>
+    <p class="note" style="margin:-4px 0 12px">Le rate successive scadono ogni mese nello stesso giorno. Se scegli una carta di credito, la rata finisce nel suo estratto conto e lascia il conto della carta il giorno dell'addebito.</p>
     <button class="btn" onclick="saveRata('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delRata('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
@@ -806,10 +893,161 @@ function saveRata(id){
   if(pre<0) return toast(`L'app ha già registrato ${done} rate: al massimo ${n-done} da pagare`);
   if(res && next<today() && !confirm(`La prossima rata (${fmtD(next)}) è già passata: verrà registrata subito come pagata e tolta dal conto. Continuare?`)) return;
   const o = {tipo:$('r-t').value.trim()||'PayPal', prod:$('r-p').value.trim(), acq:$('r-acq').value||null,
-    tot:round2(tot), n, rata:round2(tot/n), pre, done, first: res ? next : (old&&old.first)||null, fi: pre+done, conto:$('r-c').value};
+    tot:round2(tot), n, rata:round2(tot/n), pre, done, first: res ? next : (old&&old.first)||null, fi: pre+done,
+    conto: $('r-c').value.startsWith('c:') ? $('r-c').value.slice(2) : '', carta: $('r-c').value.startsWith('k:') ? $('r-c').value.slice(2) : ''};
   if(old) Object.assign(old,o); else S.rate.push({id:uid(),...o});
+  addServizio(o.tipo);
   save(); closeSheet(); payDueRate(); render(); toast('Salvato');
 }
+/* ---- Carte di credito: pagina ---- */
+function renderCarte(){
+  const cs = carte();
+  if(!cs.find(c=>c.id===ui.carta)) ui.carta = (cs[0]||{}).id || '';
+  const c = cs.find(x=>x.id===ui.carta);
+  const seg = `<div class="seg" style="margin-bottom:14px">${cs.map(x=>`<button class="${x.id===ui.carta?'on':''}" onclick="ui.carta='${x.id}';render()">${esc(x.n)}</button>`).join('')}<button style="flex:0 0 44px" onclick="openCarta()" title="Nuova carta">+</button></div>`;
+  if(!c) return seg + '<div class="empty">Nessuna carta. Tocca + per aggiungerla.</div>';
+  const usato = plafondUsato(c), disp = round2(c.plafond - usato), aperti = cicliAperti(c);
+  const resPF = round2(sum((c.flex||[]).map(pfResiduo)));
+  const prossimo = aperti[0];
+  const quando = c.tipo==='fine' ? 'a fine mese' : `il ${c.giorno} del mese dopo`;
+  let html = seg + `<div class="card hero kpi"><div class="row"><small>Disponibile su ${eur(c.plafond,0)} di plafond</small><button class="btn sm ghost" onclick="openCarta('${c.id}')">Modifica</button></div>
+      <b class="mono ${disp<0?'neg':''}">${eur(disp)}</b>
+      <div class="bar" style="margin:10px 0 12px"><div style="width:${Math.min(100,usato/(c.plafond||1)*100)}%;background:${disp<0?'var(--neg)':usato/(c.plafond||1)>.8?'var(--warn)':'var(--acc)'}"></div></div>
+      <div class="row"><div><small>Spese da addebitare</small><b class="mono" style="font-size:16px">${eur(round2(usato-resPF))}</b></div>
+        ${c.pf?`<div style="text-align:right"><small>PagoFlex residuo</small><b class="mono" style="font-size:16px">${eur(resPF)}</b></div>`:''}</div></div>
+    <div class="note" style="margin:10px 2px 0">Addebito ${quando} ${c.conto?`su <b>${esc(contoName(c.conto))}</b>`:'<span style="color:var(--warn)">· scegli il conto di addebito in Modifica</span>'}${prossimo?` · prossimo: <b>${fmtD(stmtDate(c,prossimo))}</b>, ${eur(cicloTot(c,prossimo))}`:''}</div>
+    <button class="btn" style="margin-top:12px" onclick="openTx(null,'${c.id}')">+ Spesa con ${esc(c.n)}</button>`;
+  // spese per ciclo non ancora addebitato (di solito il mese in corso, per ING anche il precedente fino al 10)
+  const cicli = [...new Set([...aperti, thisMonth()])].filter(ym=>!settled(c,ym) && ym<=thisMonth()).sort().reverse(); // i mesi futuri (solo rate PagoFlex) sono nel riquadro PagoFlex
+  cicli.forEach(ym=>{
+    const sp = cartaSpese(c,ym).sort((a,b)=>b.d.localeCompare(a.d)), pfs = pfDelCiclo(c,ym).filter(x=>x.i>=x.f.done);
+    html += `<div class="gh"><b>${MESI[+ym.slice(5)-1]} ${ym.slice(0,4)}</b><span class="mono">${eur(cicloTot(c,ym))} · addebito ${fmtD(stmtDate(c,ym))}</span></div>
+      <div>${sp.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${fmtD(t.d)} · ${esc(t.sub?t.cat:'')}${t.note?' · '+esc(t.note):''}</small></div>
+          ${c.pf && t.amt>=(c.pfMin||0) && !t.rid ? `<button class="btn sm ghost" onclick="event.stopPropagation();openPF('${c.id}','${t.id}')">PagoFlex</button>` : ''}
+          <b class="mono">-${eur(t.amt)}</b></div>`).join('')}
+        ${pfs.map(({f,i})=>`<div class="tx" onclick="ui.carta='${c.id}';openPFPlan('${c.id}','${f.id}')"><div class="mid"><b>PagoFlex · ${esc(f.desc)}</b><small>rata ${i+1}/${f.n}</small></div><b class="mono">-${eur(pfRata(f,i))}</b></div>`).join('')}
+        ${!sp.length && !pfs.length ? '<div class="empty" style="padding:12px">Nessuna spesa</div>' : ''}</div>`;
+  });
+  if(c.pf){
+    const att = (c.flex||[]).filter(f=>f.done<f.n), fin = (c.flex||[]).filter(f=>f.done>=f.n);
+    html += `<h2 class="sec">PagoFlex attivi · ${eur(resPF)} da restituire</h2>
+      <div class="rgrid">${att.map(f=>`<div class="card rate" onclick="openPFPlan('${c.id}','${f.id}')" style="cursor:pointer">
+        <div class="row"><div style="min-width:0"><b>${esc(f.desc)}</b><div class="note">${eur(f.imp)} in ${f.n} rate da ${eur(pfRata(f,f.done))}${pfFee(f)?` (comm. ${eur(pfFee(f))})`:''}</div></div><b class="mono">${eur(pfResiduo(f))}</b></div>
+        <div class="bar" style="margin:4px 0 8px"><div style="width:${f.done/f.n*100}%;background:var(--acc)"></div></div>
+        <div class="note">${f.done}/${f.n} addebitate · prossima ${fmtD(stmtDate(c, addYM(f.m0,f.done)))}</div></div>`).join('') || `<div class="empty">Nessun PagoFlex attivo. Tocca "PagoFlex" su una spesa da almeno ${eur(c.pfMin||0,0)}.</div>`}</div>
+      ${fin.length?`<p class="note" style="margin-top:8px">Conclusi: ${fin.map(f=>esc(f.desc)+' ('+eur(f.imp)+')').join(', ')}</p>`:''}`;
+  }
+  const es = (c.es||[]).slice().sort((a,b)=>b.d.localeCompare(a.d));
+  html += `<h2 class="sec">Addebiti</h2>${es.map(e=>`<div class="tx" style="cursor:default"><div class="mid"><b>${fmtD(e.d)} · spese di ${MESI[+e.m.slice(5)-1].toLowerCase()}</b><small>${e.pf?`spese ${eur(e.spese)} + PagoFlex ${eur(e.pf)} · `:''}da ${esc(contoName(e.conto)||'—')}</small></div><b class="mono">-${eur(e.tot)}</b></div>`).join('') || '<div class="empty">Ancora nessun addebito</div>'}
+    <p class="note" style="margin-top:12px">Il giorno dell'addebito (o alla prima apertura dell'app dopo) il totale del mese viene tolto dal conto della carta. Disponibile = plafond − spese non ancora addebitate − PagoFlex ancora da restituire.</p>`;
+  return html;
+}
+function openCarta(id){
+  const c = id ? carte().find(x=>x.id===id) : {n:'', plafond:1000, tipo:'giorno', giorno:10, conto:'', pf:false, pfMin:200, pfComm:0.5};
+  sheet(`<h3>${id?'Modifica carta':'Nuova carta'}</h3>
+    <div class="grid2">
+      <div class="f"><label>Nome</label><input id="k-n" value="${esc(c.n)}" placeholder="es. ING Oro"></div>
+      <div class="f"><label>Plafond mensile (€)</label><input id="k-p" inputmode="decimal" value="${String(c.plafond).replace('.',',')}"></div>
+      <div class="f"><label>Addebito</label><select id="k-t" onchange="$('k-g-w').style.visibility=this.value==='giorno'?'visible':'hidden'"><option value="giorno" ${c.tipo==='giorno'?'selected':''}>Giorno del mese dopo</option><option value="fine" ${c.tipo==='fine'?'selected':''}>Fine mese</option></select></div>
+      <div class="f" id="k-g-w" style="visibility:${c.tipo==='giorno'?'visible':'hidden'}"><label>Giorno</label><input id="k-g" inputmode="numeric" value="${c.giorno||10}"></div>
+    </div>
+    <div class="f"><label>Conto di addebito</label><select id="k-c"><option value="">—</option>${S.conti.map(x=>`<option value="${x.id}" ${x.id===c.conto?'selected':''}>${esc(x.n)} · ${x.g}</option>`).join('')}</select></div>
+    <label class="chk" style="justify-content:flex-start;margin:0 0 10px"><input type="checkbox" id="k-pf" ${c.pf?'checked':''} onchange="$('k-pf-w').style.display=this.checked?'grid':'none'"> PagoFlex (rateizzazione delle spese)</label>
+    <div class="grid2" id="k-pf-w" style="display:${c.pf?'grid':'none'}">
+      <div class="f"><label>Importo minimo (€)</label><input id="k-pm" inputmode="decimal" value="${c.pfMin??200}"></div>
+      <div class="f"><label>Commissione mensile (%)</label><input id="k-pc" inputmode="decimal" value="${String(c.pfComm??0.5).replace('.',',')}"></div>
+    </div>
+    <button class="btn" onclick="saveCarta('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delCarta('${id}')">Elimina carta</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+function saveCarta(id){
+  const o = {n:$('k-n').value.trim(), plafond:num($('k-p').value), tipo:$('k-t').value, giorno:Math.min(28,Math.max(1,parseInt($('k-g').value)||10)),
+    conto:$('k-c').value, pf:$('k-pf').checked, pfMin:num($('k-pm').value), pfComm:num($('k-pc').value)};
+  if(!o.n) return toast('Inserisci il nome');
+  if(!o.plafond) return toast('Inserisci il plafond');
+  if(id) Object.assign(carte().find(x=>x.id===id), o);
+  else { const nid=uid(); S.carte.push({id:nid, ...o, dal:thisMonth(), flex:[], es:[]}); ui.carta=nid; }
+  save(); closeSheet(); settleCards(); render(); toast('Carta salvata');
+}
+function delCarta(id){
+  const c = carte().find(x=>x.id===id);
+  if((c.flex||[]).some(f=>f.done<f.n)) return toast('Ha PagoFlex in corso: non si può eliminare');
+  if(!confirm(`Eliminare ${c.n}? Le spese restano tra i movimenti, senza carta.`)) return;
+  S.tx.forEach(t=>{ if(t.carta===id){ t.carta=''; delete t.pf; } });
+  S.rate.forEach(r=>{ if(r.carta===id) r.carta=''; });
+  S.carte = S.carte.filter(x=>x.id!==id); save(); closeSheet(); render();
+}
+/* ---- PagoFlex ---- */
+function openPF(cid, tid){
+  const c = carte().find(x=>x.id===cid), t = S.tx.find(x=>x.id===tid);
+  sheet(`<h3>PagoFlex</h3>
+    <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(t.sub||t.cat)}</b> · ${fmtD(t.d)} · ${eur(t.amt)}</p>
+    <div class="grid2">
+      <div class="f"><label>Numero rate</label><input id="pf-n" inputmode="numeric" list="pf-nl" value="3" oninput="pfPrev()"><datalist id="pf-nl"><option>3<option>6<option>9<option>12</datalist></div>
+      <div class="f"><label>Commissione mensile (%)</label><input id="pf-c" inputmode="decimal" value="${String(c.pfComm??0.5).replace('.',',')}" oninput="pfPrev()"></div>
+    </div>
+    <p class="note" id="pf-prev" style="margin:0 0 12px"></p>
+    <p class="note" style="margin:-4px 0 12px">La spesa esce dall'estratto conto di ${MESI[+t.d.slice(5,7)-1].toLowerCase()}: ogni mese viene addebitata una rata. Il capitale ancora da restituire resta impegnato sul plafond. Verifica nell'app ING rate e commissioni del tuo piano.</p>
+    <button class="btn" onclick="savePF('${cid}','${tid}')">Attiva PagoFlex</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+  pfPrev = ()=>{ const f={imp:t.amt, n:parseInt($('pf-n').value)||0, comm:num($('pf-c').value)}; if(f.n<2){ $('pf-prev').textContent=''; return; }
+    $('pf-prev').innerHTML = `Rata <b class="mono" style="color:var(--ink)">${eur(pfRata(f,0))}</b> × ${f.n} (capitale ${eur(pfCap(f,0))}${pfFee(f)?` + commissione ${eur(pfFee(f))}`:''}) · prima rata il ${fmtD(stmtDate(c,t.d.slice(0,7)))} · costo totale ${eur(round2(pfFee(f)*f.n))}`; };
+  pfPrev();
+}
+let pfPrev = ()=>{};
+function savePF(cid, tid){
+  const c = carte().find(x=>x.id===cid), t = S.tx.find(x=>x.id===tid), n = parseInt($('pf-n').value)||0;
+  if(n<2) return toast('Almeno 2 rate');
+  const id = uid();
+  c.flex = c.flex || [];
+  c.flex.push({id, tx:tid, desc:t.sub||t.cat, imp:t.amt, n, comm:num($('pf-c').value), m0:t.d.slice(0,7), done:0});
+  t.pf = id;
+  save(); closeSheet(); render(); toast('PagoFlex attivato');
+}
+function openPFPlan(cid, fid){
+  const c = carte().find(x=>x.id===cid), f = c.flex.find(x=>x.id===fid);
+  sheet(`<h3>PagoFlex · ${esc(f.desc)}</h3>
+    ${Array.from({length:f.n},(_,i)=>`<div class="acct" style="cursor:default"><span>${i<f.done?'✓ ':''}Rata ${i+1} · ${fmtD(stmtDate(c, addYM(f.m0,i)))}</span><b class="mono ${i<f.done?'mut':''}">${eur(pfRata(f,i))}</b></div>`).join('')}
+    <div class="row" style="margin:12px 2px"><span class="note">Capitale ancora da restituire</span><b class="mono">${eur(pfResiduo(f))}</b></div>
+    ${f.done===0?`<button class="btn danger" onclick="delPF('${cid}','${fid}')">Annulla PagoFlex</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
+}
+function delPF(cid, fid){
+  const c = carte().find(x=>x.id===cid), f = c.flex.find(x=>x.id===fid);
+  const t = S.tx.find(x=>x.id===f.tx); if(t) delete t.pf;
+  c.flex = c.flex.filter(x=>x.id!==fid); save(); closeSheet(); render(); toast('PagoFlex annullato: la spesa torna nell\'estratto conto');
+}
+
+/* ---- servizi delle rate (PayPal, Klarna…): rinomina, aggiungi, elimina ---- */
+function nuovoServizio(sel){
+  if(sel.value!=='__new'){ sel.dataset.prev = sel.value; return; }
+  const n = (prompt('Nome del nuovo servizio')||'').trim();
+  if(!n){ sel.value = sel.dataset.prev; return; }
+  addServizio(n);
+  if(![...sel.options].some(o=>o.value===n)){ const o=document.createElement('option'); o.textContent=n; sel.insertBefore(o, sel.lastElementChild); }
+  sel.value = sel.dataset.prev = n;
+}
+function addServizio(n){ if(!S.servizi) S.servizi=[]; if(n && !S.servizi.includes(n)) S.servizi.push(n); }
+function openServizi(){
+  const uso = n => S.rate.filter(r=>r.tipo===n);
+  sheet(`<h3>Servizi delle rate</h3>
+    <p class="note" style="margin:-6px 0 12px">Nella scheda Da pagare compaiono solo i servizi con rate in corso; gli altri restano qui, pronti per la prossima rata.</p>
+    ${servizi().map((n,i)=>{ const u=uso(n), att=u.filter(r=>residue(r)>0).length;
+      return `<div class="row" style="margin-bottom:8px"><input id="sv-${i}" value="${esc(n)}" style="flex:1"><span class="note" style="width:74px;text-align:right">${att?att+' in corso':u.length?'nascosto':'—'}</span>
+        <button class="btn sm danger" onclick="delServizio(${i})" ${u.length?'disabled title="Usato da alcune rate"':''}>✕</button></div>`; }).join('')}
+    <div class="row" style="margin:12px 0"><input id="sv-new" placeholder="Nuovo servizio, es. Younited" style="flex:1"><button class="btn sm" onclick="if($('sv-new').value.trim()){ saveServizi(); addServizio($('sv-new').value.trim()); save(); openServizi(); }">Aggiungi</button></div>
+    <button class="btn" onclick="saveServizi();save();closeSheet();render();toast('Servizi salvati')">Salva</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+// rinomina: aggiorna anche le rate e le loro uscite (voce nei movimenti)
+function saveServizi(){
+  S.servizi = S.servizi.map((old,i)=>{ const el=$('sv-'+i); const n=el ? el.value.trim()||old : old;
+    if(n!==old){ S.rate.forEach(r=>{ if(r.tipo===old) r.tipo=n; }); S.tx.forEach(t=>{ if(t.rid && t.sub===old) t.sub=n; }); }
+    return n; });
+  S.servizi = [...new Set(S.servizi)];
+}
+function delServizio(i){ saveServizi(); S.servizi.splice(i,1); save(); openServizi(); }
 function delRata(id){
   if(!confirm('Eliminare questa rata? I pagamenti già registrati restano tra i movimenti.')) return;
   S.rate=S.rate.filter(x=>x.id!==id); save(); closeSheet(); render();
@@ -824,9 +1062,9 @@ function catMap(tipo){
   return m;
 }
 let draftT = 'u';
-function openTx(id){
-  const t = id ? S.tx.find(x=>x.id===id) : {t:draftT, d:new Date().toISOString().slice(0,10), cat:'', sub:'', amt:'', note:''};
-  if(!id && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
+function openTx(id, carta){
+  const t = id ? S.tx.find(x=>x.id===id) : {t:carta?'u':draftT, d:today(), cat:'', sub:'', amt:'', note:'', carta:carta||''};
+  if(!id && !carta && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
     t.d = `${ui.year}-${String(ui.month+1).padStart(2,'0')}-01`;
   }
   sheet(`<h3>${id?'Modifica movimento':'Nuovo movimento'}</h3>
@@ -842,6 +1080,8 @@ function openTx(id){
     <div class="f" id="t-newc-w" style="display:none"><label>Nuova categoria</label><input id="t-newc" placeholder="es. Salute"></div>
     <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
     <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
+    <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label>Pagato con</label><select id="t-k" ${t.rid||t.pf?'disabled':''}><option value="">Conto / contanti</option>${carte().map(c=>`<option value="${c.id}" ${c.id===t.carta?'selected':''}>Carta ${esc(c.n)}</option>`).join('')}</select>
+      ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con PagoFlex: per cambiarla annulla prima il PagoFlex nella sezione Carte.</p>':''}</div>
     <button class="btn" onclick="saveTx('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delTx('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
@@ -849,7 +1089,7 @@ function openTx(id){
   if(!id) setTimeout(()=>$('t-a').focus(),120);
 }
 function setTxT(v){
-  $('t-t').value=v; draftT=v;
+  $('t-t').value=v; draftT=v; $('t-k-w').style.display = v==='u'?'block':'none';
   document.querySelectorAll('#tx-seg button').forEach(b=>b.classList.toggle('on',b.classList.contains(v)));
   fillCats('');
 }
@@ -870,10 +1110,21 @@ function saveTx(id){
   if(!o.amt) return toast('Inserisci un importo');
   if(!o.cat) return toast('Scegli una categoria');
   if(!o.d) return toast('Inserisci la data');
-  if(id) Object.assign(S.tx.find(x=>x.id===id),o); else S.tx.push({id:uid(),...o});
+  const old = id && S.tx.find(x=>x.id===id);
+  if(!(old && (old.rid || old.pf))) o.carta = o.t==='u' ? $('t-k').value : '';
+  // una spesa di un estratto conto già addebitato non può cambiare carta né importo: il conto è già stato scalato
+  const chiuso = t => t && t.carta && (()=>{ const c=carte().find(x=>x.id===t.carta); return c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
+  if(chiuso(old) && (o.carta!==old.carta || o.amt!==old.amt || o.d.slice(0,7)!==old.d.slice(0,7))) return toast('Estratto conto già addebitato: importo, mese e carta non si possono più cambiare');
+  if(chiuso({...o, carta:o.carta}) && !(old && old.carta===o.carta && old.d.slice(0,7)===o.d.slice(0,7))) return toast('L\'estratto conto di quel mese è già stato addebitato');
+  if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('PagoFlex già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
+  if(old) Object.assign(old,o); else S.tx.push({id:uid(),...o});
   save(); closeSheet(); render(); toast('Movimento salvato');
 }
-function delTx(id){ S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato'); }
+function delTx(id){
+  const t = S.tx.find(x=>x.id===id);
+  if(t.pf) return toast('Spesa con PagoFlex: annulla prima il PagoFlex nella sezione Carte');
+  S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato');
+}
 
 /* ============ IMPOSTAZIONI ============ */
 function openSettings(){
@@ -897,7 +1148,7 @@ function openSettings(){
     <p class="note" style="margin-top:-4px">Il backup .json non è cifrato: tienilo in un posto sicuro e mai nel repo.</p>
     <button class="btn ghost" onclick="exportJSON()">Esporta backup (.json)</button>
     <label class="btn ghost" style="display:block;text-align:center;margin-top:8px;cursor:pointer">Importa backup (.json)<input type="file" accept=".json" hidden onchange="importJSON(this.files[0])"></label>
-    <button class="btn danger" style="margin-top:8px" onclick="if(confirm(CLOUD?'Cancellare TUTTI i dati, anche dal cloud?':'Cancellare TUTTI i dati di questa app?')){S=buildSeed();save();closeSheet();render();toast('Dati cancellati')}">Cancella tutti i dati</button>
+    <button class="btn danger" style="margin-top:8px" onclick="if(confirm(CLOUD?'Cancellare TUTTI i dati, anche dal cloud?':'Cancellare TUTTI i dati di questa app?')){S=buildSeed();afterLoad();save();closeSheet();render();toast('Dati cancellati')}">Cancella tutti i dati</button>
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
 }
 /* ---- CSV ---- */
@@ -1089,12 +1340,13 @@ async function openVault(key){
   try{ S = await cloud.get(); }
   catch(e){ cloud.key=null; return gate('error','Impossibile leggere o decifrare i dati: '+(e.code||e.message||'chiave non valida')); }
   cloud.v = S;
-  afterLoad();
   // primo accesso da un browser che aveva già dati in locale: li porto nel cloud e poi li tolgo da localStorage
+  // (prima di afterLoad, che crea le carte predefinite e renderebbe il cloud "non vuoto")
   const loc = localStore.get();
-  if(loc && SEZ.some(k=>(loc[k]||[]).length) && !SEZ.some(k=>S[k].length)){
+  if(loc && SEZ.some(k=>(loc[k]||[]).length) && !SEZ.some(k=>(S[k]||[]).length)){
     S = {...buildSeed(), ...loc}; cloud.wipeLocal = true; save(); toast('Dati locali caricati nel cloud');
   }
+  afterLoad();
   $('gate').classList.remove('on'); setSync(cloud.timer?'saving':'ok'); render();
 }
 function resetVault(){
@@ -1119,7 +1371,7 @@ async function keyMismatch(){
     const m=(await cloud.ref().get({source:'server'})).data();
     if(m && m.salt!==cloud.meta.salt){ cloud.meta=m; return lockVault('La passphrase è stata cambiata da un altro dispositivo: inserisci quella nuova. Le ultime modifiche fatte qui non sono state salvate.'); }
   }catch(e){}
-  setSync('err'); toast('Salvataggio rifiutato: controlla le regole Firestore');
+  setSync('err'); toast('Salvataggio rifiutato: aggiorna le regole Firestore (firestore.rules)');
 }
 function openPass(){
   sheet(`<h3>Cambia passphrase</h3>
@@ -1152,7 +1404,7 @@ document.addEventListener('visibilitychange', async ()=>{
 window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
 
 // app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
-function checkRate(){ if((!CLOUD || cloud.key) && payDueRate()) render(); }
+function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + settleCards())) render(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
 setInterval(checkRate, 60*60*1000);
 

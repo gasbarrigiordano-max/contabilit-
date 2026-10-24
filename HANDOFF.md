@@ -40,7 +40,15 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 4. **Patrimonio**: conti divisi in Banche / Cash / Investimenti, saldo modificabile.
 5. **Altro**: Rate, Investimenti (investito, attuale, rendimento % ricalcolato), Trading (P&L giornaliero per mese). Su iPad/Mac Rate e Investimenti hanno una voce nel menu laterale.
 
+### Carte di credito
+- Sezione Carte (in Altro su iPhone, voce nel menu su iPad/Mac), una scheda per carta: ING Oro (plafond 1.500 €, addebito il 10 del mese dopo su ING, PagoFlex attivo) e BBVA (1.000 €, addebito a fine mese). Tutto modificabile, si possono aggiungere carte.
+- Spese registrate con "+ Spesa con …" (o "Pagato con" nel movimento): sono uscite normali alla loro data; il giorno dell'addebito il totale del mese (spese + rate PagoFlex) viene tolto dal conto della carta.
+- **Disponibile = plafond − spese non ancora addebitate − capitale PagoFlex ancora da restituire.**
+- PagoFlex (ING): su spese ≥ 200 € (minimo modificabile), 3/6/9/12 rate (o altro numero), commissione mensile 0,5% dell'importo (modificabile; da verificare sul contratto). La commissione diventa un'uscita "Carte › Commissioni PagoFlex" a ogni addebito; il capitale no, perché la spesa è già tra le uscite.
+- Rate con "Pagata da" una carta: alla scadenza diventano spese della carta e lasciano il conto con l'estratto.
+
 ### Rate
+- "+ Nuova rata" e "Servizi" in alto. In Da pagare le rate sono raggruppate per servizio; i servizi senza rate in corso restano nascosti e ricompaiono con una nuova rata.
 - Due schede: **Da pagare** (piani in corso, con prossima scadenza e avanzamento) e **Pagate** (piani conclusi + storico dei pagamenti registrati).
 - Nuova rata: metodo, prodotto, data acquisto, importo totale, numero rate, rate da pagare, data prossima rata, conto da cui viene pagata.
 - **Pagamento automatico**: all'apertura dell'app (e ogni ora se resta aperta) ogni rata scaduta, oggi compreso, diventa un'uscita `Rate › <metodo>` con la data di scadenza, viene tolta dal saldo del conto scelto e segnata pagata. Il movimento ha id fisso `rt_<rata>_<n>` per non duplicarlo tra dispositivi.
@@ -50,6 +58,8 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 - `conti`: `{id, g:'Banche'|'Cash'|'Investimenti', n, v}`
 - `rate`: `{id, tipo, prod, acq, tot, n, rata, pre, done, first, fi, conto}`: piano di n rate mensili (`rata` = tot/n, l'ultima assorbe gli arrotondamenti). `pre` = già pagate prima di inserirla, `done` = pagate dall'app; la rata i scade `first` + (i − `fi`) mesi. `conto` = id del conto da cui escono i soldi. Il vecchio formato `{tipo, prod, rata, res}` viene convertito da solo (senza data: va completato con Modifica).
 - `inv`: `{n, lvl:0|1|2, inv, eff}` (i totali usano solo `lvl 0`)
+- `carte`: `{id, n, plafond, tipo:'giorno'|'fine', giorno, conto, pf, pfMin, pfComm, dal, flex:[], es:[]}`. Le spese con carta sono movimenti con `carta`. Ciclo = mese della spesa; addebito il `giorno` del mese dopo (ING Oro, 10) o a fine mese (BBVA). `dal` = primo mese gestito (prima si considera già addebitato). `flex` = PagoFlex `{id, tx, desc, imp, n, comm, m0, done}`; `es` = estratti addebitati `{m, d, spese, pf, tot, conto}`.
+- `servizi`: elenco dei servizi delle rate (PayPal, Klarna, Scalapay, Findomestic, Compass…), modificabile.
 - `trading`: `{id, d, v}`
 
 ## Come lavoro (dal mio file Numbers 2026)
