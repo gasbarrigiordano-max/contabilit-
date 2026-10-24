@@ -120,6 +120,21 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .inv-r.h{color:var(--ink3);font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
 .inv-r div:not(:first-child){text-align:right}
 .l1{padding-left:12px;color:var(--ink2)} .l2{padding-left:24px;color:var(--ink3);font-size:11.5px}
+/* panoramica: saldo quadrato + rate del mese */
+.top2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sq{aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.sq .io small{margin:6px 0 1px}
+.sq .io b{font-size:19px}
+.rc{aspect-ratio:1/1;display:flex;flex-direction:column;min-width:0;overflow:hidden;cursor:pointer}
+.rc>b{font-size:19px}
+.rl{margin-top:8px;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.rl div{display:flex;justify-content:space-between;gap:6px}
+.rc .rl b{display:inline;font-size:12px;font-weight:600;white-space:nowrap}
+.rl span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
+.rl .ok{color:var(--acc)}
+.rc .note{margin-top:auto;padding-top:8px}
+.legend .eu{font-size:11px;color:var(--ink2)}
+.legend .pc{font-size:10.5px;color:var(--ink3);width:30px;text-align:right}
 .pl-bars{display:flex;align-items:center;gap:3px;height:90px;margin-top:10px}
 .pl-bars div{flex:1;border-radius:3px;min-height:2px}
 
@@ -340,6 +355,10 @@ const uid = () => 'x'+Date.now().toString(36)+Math.random().toString(36).slice(2
 const sum = a => a.reduce((x,y)=>x+y,0);
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1600); }
 const txYear = t => +t.d.slice(0,4);
+const thisMonth = () => `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+const rataPagata = r => r.paid===thisMonth();
+// rate del mese corrente: attive o pagate in questo mese (anche se era l'ultima)
+const rateMese = () => S.rate.filter(r=>r.res>0 || rataPagata(r));
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
 function periodTx(){ return S.tx.filter(inPeriod); }
@@ -395,22 +414,38 @@ function renderHome(){
       </div><div style="font-size:9px;color:var(--ink3);margin-top:5px;font-weight:700">${m[0]}</div></div>`).join('');
   const maxSub = bySub[0]?bySub[0][1]:1;
   $('v-home').innerHTML = `
-    <div class="card hero kpi"><small>Saldo ${periodLabel().toLowerCase()}</small><b class="mono ${saldo<0?'neg':''}">${eur(saldo)}</b>
-      <div class="row" style="margin-top:14px">
-        <div><small>Entrate</small><b class="mono pos" style="font-size:16px">${eur0(te)}</b></div>
-        <div style="text-align:right"><small>Uscite</small><b class="mono neg" style="font-size:16px">${eur0(tu)}</b></div>
-      </div></div>
+    <div class="top2">
+      <div class="card hero kpi sq"><div><small>Saldo ${periodLabel().toLowerCase()}</small><b class="mono ${saldo<0?'neg':''}" style="font-size:24px">${eur0(saldo)}</b></div>
+        <div class="io"><small>Entrate</small><b class="mono pos">${eur0(te)}</b><small>Uscite</small><b class="mono neg">${eur0(tu)}</b></div></div>
+      ${rateCard()}
+    </div>
     <div class="grid2" style="margin-top:10px">
       <div class="card kpi" onclick="showTab('pat')"><small>Liquidità</small><b class="mono">${eur0(liq)}</b></div>
       <div class="card kpi" onclick="showTab('pat')"><small>Patrimonio</small><b class="mono">${eur0(patr)}</b></div>
     </div>
     <h2 class="sec">Uscite per categoria</h2>
-    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono" style="font-size:11px">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div>
+    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${Math.round(v).toLocaleString('it-IT')} €</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div>
     <h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
     <div class="card"><div style="display:flex;gap:2px">${bars}</div>
       <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div>
     <h2 class="sec">Voci che pesano di più</h2>
     <div class="card">${bySub.length ? `<div class="bl">${bySub.map(([k,v],i)=>`<div class="bl-i"><div class="top"><span>${esc(k)}</span><span class="mono">${eur0(v)}</span></div><div class="bar"><div style="width:${v/maxSub*100}%;background:${PAL[i%PAL.length]}"></div></div></div>`).join('')}</div>` : '<div class="empty">—</div>'}</div>`;
+}
+
+// rate da pagare nel mese corrente, raggruppate per metodo (PayPal, Klarna…)
+function rateCard(){
+  const list = rateMese();
+  const by = new Map();
+  list.forEach(r=>{ const k=r.tipo||'Altro'; const g=by.get(k)||{due:0,paid:0}; g[rataPagata(r)?'paid':'due']+=r.rata; by.set(k,g); });
+  const groups = [...by.entries()].sort((a,b)=>(b[1].due-a[1].due) || (b[1].paid-a[1].paid)); // prima quelle da pagare
+  const due = sum(list.filter(r=>!rataPagata(r)).map(r=>r.rata)), paid = sum(list.filter(rataPagata).map(r=>r.rata));
+  const rows = paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
+  const amt = v => v ? `<b class="mono">${eur(v)}</b>` : `<b class="ok">✓</b>`;
+  const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due)}</div>`).join('')
+    + (groups.length>MAX ? `<div><span>+ altri ${groups.length-MAX}</span>${amt(sum(groups.slice(MAX).map(([k,g])=>g.due)))}</div>` : '');
+  return `<div class="card kpi rc" onclick="ui.altro='rate';showTab('altro')"><small>Rate da pagare · ${M3[now.getMonth()]}</small>
+    ${list.length ? `<b class="mono ${due?'neg':'pos'}">${due?eur(due):'Tutto pagato'}</b><div class="rl">${lines}</div>
+      ${paid?`<div class="note">Già pagate ${eur(paid)}</div>`:''}` : `<div class="empty" style="padding:18px 0 0">Nessuna rata attiva</div>`}</div>`;
 }
 
 /* ---- Movimenti ---- */
@@ -529,8 +564,8 @@ function renderAltro(){
     const tot = sum(S.rate.map(r=>r.rata*r.res)), mensile = sum(S.rate.filter(r=>r.res>0).map(r=>r.rata));
     body = `<div class="grid2"><div class="card kpi"><small>Rate al mese</small><b class="mono">${eur(mensile)}</b></div><div class="card kpi"><small>Ancora da pagare</small><b class="mono neg">${eur(tot)}</b></div></div>
       <h2 class="sec">Rate attive</h2>` +
-      (S.rate.filter(r=>r.res>0).map(r=>`<div class="card rate"><div class="row"><div><b>${esc(r.prod&&r.prod!=='-'?r.prod:r.tipo)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.res} rate</div></div><b class="mono">${eur(r.rata*r.res)}</b></div>
-        <div class="row"><span class="pill">${r.res} residue</span><div style="display:flex;gap:6px"><button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button><button class="btn sm" onclick="payRata('${r.id}')">Rata pagata</button></div></div></div>`).join('') || '<div class="empty">Nessuna rata attiva 🎉</div>') +
+      (rateMese().map(r=>`<div class="card rate"><div class="row"><div><b>${esc(r.prod&&r.prod!=='-'?r.prod:r.tipo)}</b><div class="note">${esc(r.tipo)} · ${eur(r.rata)} × ${r.res} rate</div></div><b class="mono">${eur(r.rata*r.res)}</b></div>
+        <div class="row"><span class="pill">${r.res ? r.res+' residue' : 'saldata'}</span><div style="display:flex;gap:6px"><button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button>${rataPagata(r) ? `<button class="btn sm ghost" onclick="unpayRata('${r.id}')">✓ Pagata · annulla</button>` : `<button class="btn sm" onclick="payRata('${r.id}')">Rata pagata</button>`}</div></div></div>`).join('') || '<div class="empty">Nessuna rata attiva 🎉</div>') +
       `<button class="btn ghost" style="margin-top:8px" onclick="openRata()">+ Nuova rata</button>`;
   } else if(ui.altro==='inv'){
     const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
@@ -556,11 +591,12 @@ function renderAltro(){
   }
   $('v-altro').innerHTML = `<div class="seg" style="margin-bottom:14px">${tabs.map(([v,l])=>`<button class="${ui.altro===v?'on':''}" onclick="ui.altro='${v}';render()">${l}</button>`).join('')}</div>` + body;
 }
-function payRata(id){ const r=S.rate.find(x=>x.id===id); r.res=Math.max(0,r.res-1); save(); render(); toast('Rata segnata come pagata'); }
+function payRata(id){ const r=S.rate.find(x=>x.id===id); r.res=Math.max(0,r.res-1); r.paid=thisMonth(); save(); render(); toast('Rata segnata come pagata'); }
+function unpayRata(id){ const r=S.rate.find(x=>x.id===id); r.res++; r.paid=null; save(); render(); toast('Pagamento annullato'); }
 function openRata(id){
   const r = id ? S.rate.find(x=>x.id===id) : {tipo:'PayPal',prod:'',rata:0,res:1};
   sheet(`<h3>${id?'Modifica rata':'Nuova rata'}</h3>
-    <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(r.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>Scalapay<option>Carta di credito<option>Aliexpress</datalist></div>
+    <div class="f"><label>Metodo</label><input id="r-t" list="r-tl" value="${esc(r.tipo)}"><datalist id="r-tl"><option>PayPal<option>Klarna<option>AliExpress<option>Findomestic<option>Compass<option>Scalapay<option>Carta di credito</datalist></div>
     <div class="f"><label>Prodotto</label><input id="r-p" value="${esc(r.prod==='-'?'':r.prod)}"></div>
     <div class="grid2"><div class="f"><label>Importo rata</label><input id="r-r" inputmode="decimal" value="${r.rata||''}"></div><div class="f"><label>Rate residue</label><input id="r-n" inputmode="numeric" value="${r.res}"></div></div>
     <button class="btn" onclick="saveRata('${id||''}')">Salva</button>
