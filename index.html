@@ -310,6 +310,7 @@ nav button.on{color:var(--acc)}
   <button data-t="pat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>Patrimonio</button>
   <button data-t="rate" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Rate</button>
   <button data-t="carte" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/><circle cx="16.5" cy="15" r="1.2"/><circle cx="18.8" cy="15" r="1.2"/></svg>Carte</button>
+  <button data-t="abbo" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 15"/><path d="M4 20v-5h5"/></svg>Abbonamenti</button>
   <button data-t="inv" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Investimenti</button>
   <button data-t="altro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>Altro</button>
 </nav>
@@ -369,7 +370,7 @@ const kdb = {
    Salvataggio ottimistico: lo stato in memoria cambia subito, l'invio parte dopo 400 ms
    e solo per le sezioni modificate, con nuovi tentativi se la rete manca. */
 const KEY = 'bilancio:v1';
-const SEZ = ['tx','conti','rate','inv','trading','carte','servizi','opz','storico'];
+const SEZ = ['tx','conti','rate','inv','trading','carte','servizi','opz','storico','abbo'];
 const localStore = {
   get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
   set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} },
@@ -663,6 +664,28 @@ function autoStorico(){
   putFoto(f); save();
   return 1;
 }
+/* ---- Abbonamenti e servizi ricorrenti ----
+   {id, n, costo, freq (mesi: 1, 2, 3, 6, 12), next:'YYYY-MM-DD' (prossima scadenza), pag ('k:carta'|'d:conto'|'c:conto'|'x:cash'|''),
+    cat, attivo}. Alla scadenza diventa un'uscita (cat › nome) pagata con `pag` e la scadenza avanza di freq mesi. */
+const FREQ = [[1,'Mensile'],[2,'Bimestrale'],[3,'Trimestrale'],[6,'Semestrale'],[12,'Annuale']];
+const freqName = f => (FREQ.find(x=>x[0]===f)||[0,f+' mesi'])[1];
+const abbo = () => S.abbo || [];
+const abboMese = a => round2(a.costo/a.freq);
+function payAbbo(){
+  const t = today(); let k = 0;
+  abbo().forEach(a=>{
+    while(a.attivo!==false && a.next && a.next<=t){
+      const id = `ab_${a.id}_${a.next}`;
+      if(!S.tx.some(x=>x.id===id)){
+        const tx = {id, d:a.next, t:'u', cat:a.cat||'Ricorrenti', sub:a.n, amt:a.costo, note:freqName(a.freq), abid:a.id, ...pagParse(a.pag||'')};
+        S.tx.push(tx); applyPag(tx);
+      }
+      a.next = addMonths(a.next, a.freq); k++;
+    }
+  });
+  if(k){ save(); toast(k===1 ? '1 abbonamento registrato in automatico' : `${k} abbonamenti registrati in automatico`); }
+  return k;
+}
 // dopo ogni caricamento dei dati (avvio, sblocco, backup importato, ritorno in primo piano)
 function afterLoad(){
   S.rate = S.rate.map(migrateRata);
@@ -671,7 +694,8 @@ function afterLoad(){
   if(!S.carte){ S.carte = seedCarte(); seedConti(); }
   if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
-  payDueRate(); settleCards(); autoStorico();
+  if(!S.abbo) S.abbo = [];
+  payDueRate(); payAbbo(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
@@ -685,7 +709,7 @@ WIDE.addEventListener('change', ()=>showTab(ui.tab==='altro' && SUB.includes(ui.
 
 /* ============ NAV / PERIODO ============ */
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
-const SUB = ['rate','carte','inv']; // su schermo largo hanno una voce nel menu, su telefono stanno in Altro
+const SUB = ['rate','carte','abbo','inv']; // su schermo largo hanno una voce nel menu, su telefono stanno in Altro
 function showTab(t){
   if(SUB.includes(t)){ ui.altro=t; if(!WIDE.matches) t='altro'; }
   else if(t==='altro' && WIDE.matches) ui.altro='trading';
@@ -694,7 +718,7 @@ function showTab(t){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+(SUB.includes(t)?'altro':t)));
   $('fab').classList.toggle('on', t==='home'||t==='mov');
   $('chips').style.display = (t==='home'||t==='mov') ? 'flex' : 'none';
-  $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',rate:'Rate',carte:'Carte di credito',inv:'Investimenti',altro:'Altro'}[t];
+  $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',rate:'Rate',carte:'Carte di credito',abbo:'Abbonamenti',inv:'Investimenti',altro:'Altro'}[t];
   $('period-bar').style.display = (t==='pat' || SUB.includes(t)) ? 'none' : 'block';
   render(); window.scrollTo(0,0);
 }
@@ -710,7 +734,7 @@ function renderChips(){
 /* ============ RENDER ============ */
 function render(){
   renderChips();
-  ({home:renderHome, mov:renderMov, mx:renderMx, pat:renderPat, altro:renderAltro, rate:renderAltro, carte:renderAltro, inv:renderAltro})[ui.tab]();
+  ({home:renderHome, mov:renderMov, mx:renderMx, pat:renderPat, altro:renderAltro, rate:renderAltro, carte:renderAltro, abbo:renderAltro, inv:renderAltro})[ui.tab]();
 }
 
 /* ---- Panoramica ---- */
@@ -1068,10 +1092,12 @@ function delConto(id){ S.conti=S.conti.filter(x=>x.id!==id); save(); closeSheet(
 
 /* ---- Altro: Rate / Investimenti / Trading ---- */
 function renderAltro(){
-  const tabs = [['rate','Rate'],['carte','Carte'],['inv','Invest.'],['trading','Trading']];
+  const tabs = [['rate','Rate'],['carte','Carte'],['abbo','Abbon.'],['inv','Invest.'],['trading','Trading']];
   let body='';
   if(ui.altro==='rate'){
     body = renderRate();
+  } else if(ui.altro==='abbo'){
+    body = renderAbbo();
   } else if(ui.altro==='carte'){
     body = renderCarte();
   } else if(ui.altro==='inv'){
@@ -1202,6 +1228,56 @@ function saveRata(id){
   addServizio(o.tipo);
   save(); closeSheet(); payDueRate(); render(); toast('Salvato');
 }
+/* ---- Abbonamenti: pagina ---- */
+function renderAbbo(){
+  const att = abbo().filter(a=>a.attivo!==false).sort((a,b)=>(a.next||'9').localeCompare(b.next||'9')), sosp = abbo().filter(a=>a.attivo===false);
+  const giorni = d => Math.round((new Date(d+'T12:00') - new Date(today()+'T12:00'))/864e5);
+  const quando = d => { const g = giorni(d); return g===0 ? 'oggi' : g===1 ? 'domani' : g<0 ? 'scaduto' : `tra ${g} giorni`; };
+  const meseCorr = thisMonth(), delMese = att.filter(a=>a.next && a.next.slice(0,7)===meseCorr);
+  const pagati = S.tx.filter(t=>t.abid && t.d.slice(0,7)===meseCorr);
+  const card = a => { const ult = S.tx.filter(t=>t.abid===a.id).sort((x,y)=>y.d.localeCompare(x.d))[0], pl = pagLabel(pagParse(a.pag||''));
+    return `<div class="tx" onclick="openAbbo('${a.id}')"><i class="logo l" style="width:36px;height:36px">${esc((a.n||'?')[0].toUpperCase())}</i>
+      <div class="mid"><b>${esc(a.n)}</b><small>${freqName(a.freq)}${pl?' · '+esc(pl):''}</small>
+        <small>${a.attivo===false?'Sospeso':a.next?`Rinnovo ${fmtD(a.next)} · ${quando(a.next)}`:''}${ult?` · ultimo ${fmtD(ult.d)}`:''}</small></div>
+      <div style="text-align:right"><b class="mono">${eur(a.costo)}</b>${a.freq>1?`<small class="mono mut" style="display:block;font-size:11px">${eur(abboMese(a))}/mese</small>`:''}</div></div>`; };
+  return `<button class="btn" style="margin-bottom:12px" onclick="openAbbo()">+ Nuovo abbonamento</button>
+    <div class="grid2"><div class="card kpi"><small>Al mese</small><b class="mono">${eur(sum(att.map(abboMese)))}</b></div><div class="card kpi"><small>All'anno</small><b class="mono">${eur(round2(sum(att.map(a=>a.costo*12/a.freq))))}</b></div></div>
+    <div class="note" style="margin:10px 2px 0">${MESI[now.getMonth()]}: ${pagati.length?`pagati ${eur(sum(pagati.map(t=>t.amt)))}`:'nessun pagamento ancora'}${delMese.length?` · da pagare ${eur(sum(delMese.map(a=>a.costo)))} (${delMese.map(a=>esc(a.n)).join(', ')})`:''}</div>
+    <h2 class="sec">Attivi · ${att.length}</h2>${att.map(card).join('') || '<div class="empty">Nessun abbonamento. Aggiungi SIM, palestra, Apple Music, iCloud…</div>'}
+    ${sosp.length?`<h2 class="sec">Sospesi · ${sosp.length}</h2>${sosp.map(card).join('')}`:''}
+    <p class="note" style="margin-top:12px">Il giorno della scadenza (o alla prima apertura dell'app dopo) l'abbonamento viene registrato tra le uscite e pagato con il metodo scelto: con carta di credito finisce nell'estratto conto, con carta di debito o conto esce subito dal saldo. Poi la scadenza passa al periodo successivo.</p>`;
+}
+function openAbbo(id){
+  const a = id ? abbo().find(x=>x.id===id) : {n:'', costo:'', freq:1, next:addMonths(today(),1), pag:ui.lastPag||'', cat:catMap('u').has('Ricorrenti')?'Ricorrenti':'Abbonamenti', attivo:true};
+  const cats = [...catMap('u').keys()].sort();
+  sheet(`<h3>${id?'Modifica abbonamento':'Nuovo abbonamento'}</h3>
+    <div class="f"><label>Servizio</label><input id="ab-n" list="ab-nl" value="${esc(a.n)}" placeholder="es. Apple Music"><datalist id="ab-nl">${['SIM','Palestra','Apple Music','iCloud','Claude','Netflix','Spotify','Amazon Prime','Disney+','YouTube Premium','Assicurazione auto','Luce','Gas','Internet casa'].map(x=>`<option>${x}`).join('')}</datalist></div>
+    <div class="grid2">
+      <div class="f"><label>Costo (€)</label><input id="ab-c" inputmode="decimal" value="${a.costo===''?'':String(a.costo).replace('.',',')}" placeholder="0,00 €"></div>
+      <div class="f"><label>Ricorrenza</label><select id="ab-f">${FREQ.map(([v,l])=>`<option value="${v}" ${v===a.freq?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="f"><label>Prossima scadenza</label><input type="date" id="ab-d" value="${a.next||''}"></div>
+      <div class="f"><label>Categoria</label><input id="ab-cat" list="ab-cl" value="${esc(a.cat)}"><datalist id="ab-cl">${cats.map(c=>`<option>${esc(c)}`).join('')}</datalist></div>
+    </div>
+    <div class="f"><label>Pagato con</label><select id="ab-p">${pagOptions(a.pag||'')}</select></div>
+    <label class="chk" style="justify-content:flex-start;margin:0 0 12px"><input type="checkbox" id="ab-on" ${a.attivo!==false?'checked':''}> Attivo (togli la spunta per sospenderlo)</label>
+    <button class="btn" onclick="saveAbbo('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delAbbo('${id}')">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+function saveAbbo(id){
+  const o = {n:$('ab-n').value.trim(), costo:round2(num($('ab-c').value)), freq:+$('ab-f').value, next:$('ab-d').value, pag:$('ab-p').value, cat:$('ab-cat').value.trim()||'Ricorrenti', attivo:$('ab-on').checked};
+  if(!o.n) return toast('Inserisci il servizio');
+  if(!o.costo) return toast('Inserisci il costo');
+  if(!o.next) return toast('Inserisci la prossima scadenza');
+  if(o.attivo && o.next<today() && !confirm(`La scadenza (${fmtD(o.next)}) è già passata: i pagamenti fino a oggi verranno registrati subito. Continuare?`)) return;
+  if(id) Object.assign(abbo().find(x=>x.id===id), o); else S.abbo.push({id:uid(), ...o});
+  save(); closeSheet(); payAbbo(); render(); toast('Salvato');
+}
+function delAbbo(id){
+  if(!confirm('Eliminare questo abbonamento? I pagamenti già registrati restano tra i movimenti.')) return;
+  S.abbo = S.abbo.filter(x=>x.id!==id); save(); closeSheet(); render();
+}
+
 /* ---- Carte di credito: pagina ---- */
 function renderCarte(){
   const cs = carte();
@@ -1727,7 +1803,7 @@ document.addEventListener('visibilitychange', async ()=>{
 window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
 
 // app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
-function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + settleCards() + autoStorico())) render(); }
+function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + payAbbo() + settleCards() + autoStorico())) render(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
 setInterval(checkRate, 60*60*1000);
 

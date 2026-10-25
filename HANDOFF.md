@@ -40,6 +40,9 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 4. **Patrimonio**: riepilogo con composizione (Banche / Cash / Investimenti), conti con logo e quota del patrimonio, saldo modificabile; **Andamento** (grafico del totale con tooltip, 12 mesi / 2 anni / tutto, variazione ultimo mese e da inizio anno) e **Storico mensile** (tocca un mese per il dettaglio dei conti, correggerlo o eliminarlo; "+ Mese passato" per inserire i mesi precedenti).
 5. **Altro**: Rate, Investimenti (investito, attuale, rendimento % ricalcolato), Trading (P&L giornaliero per mese). Su iPad/Mac Rate e Investimenti hanno una voce nel menu laterale.
 
+### Abbonamenti
+- Sezione Abbonamenti (in Altro su iPhone, voce nel menu su iPad/Mac): SIM, palestra, Apple Music, iCloud, Claude… con costo, ricorrenza (mensile, bimestrale, trimestrale, semestrale, annuale), prossima scadenza, metodo di pagamento e categoria (predefinita Ricorrenti). Costo totale al mese e all'anno; si possono sospendere.
+
 ### Carte di credito
 - Sezione Carte (in Altro su iPhone, voce nel menu su iPad/Mac), una scheda per carta: ING Oro (plafond 1.500 €, addebito il 10 del mese dopo su ING, PagoFlex attivo) e BBVA (1.000 €, addebito a fine mese). Tutto modificabile, si possono aggiungere carte.
 - Spese registrate con "+ Spesa con …" (o "Pagato con" nel movimento): sono uscite normali alla loro data; il giorno dell'addebito il totale del mese (spese + rate PagoFlex) viene tolto dal conto della carta.
@@ -61,6 +64,7 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 - `carte`: `{id, n, plafond, tipo:'giorno'|'fine', giorno, conto, pf, pfMin, pfComm, dal, flex:[], es:[]}`. Le spese con carta sono movimenti con `carta`. Ciclo = mese della spesa; addebito il `giorno` del mese dopo (ING Oro, 10) o a fine mese (BBVA). `dal` = primo mese gestito (prima si considera già addebitato). `flex` = PagoFlex `{id, tx, desc, imp, n, comm, m0, done}`; `es` = estratti addebitati `{m, d, spese, pf, tot, conto}`.
 - `opz`: impostazioni/flag (`contiBase`: conti ING, BBVA, N26, Buddy Bank, Wise creati una volta se mancavano; `storicoDal`: primo mese seguito dallo storico automatico)
 - `storico`: una foto del patrimonio per mese `{m, d, tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}`; tipo `fine` (ultimo giorno del mese, aggiornata a ogni controllo di quel giorno), `tardi` (prima apertura dopo, saldi riportati a fine mese togliendo i movimenti registrati dall'app nel frattempo), `ora` (salvata a mano, poi sostituita da quella di fine mese), `inserito` (mese passato a mano o da CSV, mai sovrascritto)
+- `abbo`: abbonamenti `{id, n, costo, freq (1/2/3/6/12 mesi), next, pag, cat, attivo}`; alla scadenza diventano un'uscita `cat › nome` pagata con `pag` (stessi valori del campo "Pagato con") e `next` avanza di `freq` mesi; id movimento `ab_<id>_<data>`
 - `servizi`: elenco dei servizi delle rate (PayPal, Klarna, Scalapay, Findomestic, Compass…), modificabile.
 - `trading`: `{id, d, v}`
 
