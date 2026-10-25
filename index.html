@@ -107,6 +107,11 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 /* lists */
 .acct{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .acct:last-child{border:none}
+.ord{display:flex;align-items:center;gap:6px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.ord span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ord.sub{padding-left:20px;font-size:13px;color:var(--ink2);cursor:default;background:rgba(255,255,255,.015)}
+.ord .btn.sm{padding:5px 10px}
+.ord .btn:disabled{opacity:.25}
 .acct-n{display:flex;align-items:center;gap:12px;min-width:0}
 .acct-n>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acct-n small{display:block;font-size:11px;color:var(--ink3);margin-top:1px}
@@ -814,7 +819,8 @@ function renderMx(){
     if(!c.subs.has(sk)) c.subs.set(sk,Array(12).fill(0));
     c.subs.get(sk)[txMonth(t)]+=t.amt;
   });
-  const order = [...cats.entries()].sort((a,b)=>sum(b[1].m)-sum(a[1].m));
+  const pers = (S.opz||{}).mxSort==='pers', ord = mxOrdine(tipo);
+  const order = ordina([...cats.entries()], pers ? ord.cats : [], v=>sum(v.m));
   const fmt = eurI;
   const cell = v => `<td class="mono${v?'':' z'}">${fmt(v)}</td>`;
   const tot = Array(12).fill(0); order.forEach(([k,c])=>c.m.forEach((v,i)=>tot[i]+=v));
@@ -822,7 +828,7 @@ function renderMx(){
   order.forEach(([k,c])=>{
     rows+=`<tr class="grp"><td>${esc(k)}</td>${c.m.map(cell).join('')}<td class="mono t">${fmt(sum(c.m))}</td></tr>`;
     if(c.subs.size>1 || ![...c.subs.keys()].includes('—'))
-      [...c.subs.entries()].sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([s,m])=>{
+      ordina([...c.subs.entries()], pers ? ord.subs[k]||[] : [], sum).forEach(([s,m])=>{
         rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${fmt(sum(m))}</td></tr>`;
       });
   });
@@ -831,12 +837,66 @@ function renderMx(){
       <button class="u ${tipo==='u'?'on':''}" onclick="ui.mxTipo='u';render()">Uscite</button>
       <button class="e ${tipo==='e'?'on':''}" onclick="ui.mxTipo='e';render()">Entrate</button>
     </div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="chips" style="margin:0"><button class="chip ${pers?'':'on'}" onclick="setMxSort('importo')">Per importo</button><button class="chip ${pers?'on':''}" onclick="setMxSort('pers')">Personalizzato</button></div>
+      <button class="btn sm ghost" onclick="openOrdine()">↕ Ordina</button></div>
     <div class="mx-wrap"><table class="mx">
       <tr><th>${tipo==='u'?'Uscite':'Entrate'} ${ui.year}</th>${M3.map(m=>`<th>${m}</th>`).join('')}<th>Totale</th></tr>
       <tr class="tot"><td>Totale mese</td>${tot.map(cell).join('')}<td class="mono t">${fmt(sum(tot))}</td></tr>
       ${rows || '<tr><td colspan="14" class="empty">Nessun dato per questo anno</td></tr>'}
     </table></div>
     <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
+}
+
+/* ---- Ordine personalizzato delle categorie (Mensile) ----
+   S.opz.ordine = {u:{cats:[...], subs:{cat:[...]}}, e:{...}}, S.opz.mxSort = 'importo' | 'pers'.
+   Le categorie nuove, non ancora nell'elenco, vanno in fondo per importo. */
+const mxOrdine = tipo => ((S.opz||{}).ordine||{})[tipo] || {cats:[], subs:{}};
+function ordina(list, custom, tot){
+  const i = n => { const k = custom.indexOf(n); return k<0 ? Infinity : k; };
+  return list.sort((a,b)=> (i(a[0])-i(b[0])) || (tot(b[1])-tot(a[1])));
+}
+function setMxSort(v){
+  S.opz.mxSort = v; save();
+  if(v==='pers' && !mxOrdine(ui.mxTipo).cats.length) return openOrdine();
+  render();
+}
+let ordDraft = null;
+function openOrdine(){
+  const tipo = ui.mxTipo, o = mxOrdine(tipo), all = S.tx.filter(t=>t.t===tipo);
+  const totC = new Map(), totS = new Map();
+  all.forEach(t=>{ totC.set(t.cat,(totC.get(t.cat)||0)+t.amt); if(t.sub){ const k=t.cat+'\u0000'+t.sub; totS.set(k,(totS.get(k)||0)+t.amt); } });
+  const m = catMap(tipo);
+  // parto dall'ordine salvato e aggiungo in fondo, per importo, quello che non c'è ancora
+  const merge = (saved, names, t) => [...saved.filter(n=>names.includes(n)), ...names.filter(n=>!saved.includes(n)).sort((a,b)=>(t(b)||0)-(t(a)||0))];
+  const cats = merge(o.cats, [...m.keys()], c=>totC.get(c));
+  const subs = {}; cats.forEach(c=>subs[c] = merge(o.subs[c]||[], [...m.get(c)], s=>totS.get(c+'\u0000'+s)));
+  ordDraft = {tipo, cats, subs, open:-1};
+  drawOrdine();
+}
+function drawOrdine(){
+  const d = ordDraft, top = $('ov').classList.contains('on') ? $('sheet').scrollTop : 0;
+  const btns = (k, ci, i, n) => `<button class="btn sm ghost" ${i===0?'disabled':''} onclick="event.stopPropagation();mvOrd('${k}',${ci},${i},-1)" aria-label="Su">▲</button><button class="btn sm ghost" ${i===n-1?'disabled':''} onclick="event.stopPropagation();mvOrd('${k}',${ci},${i},1)" aria-label="Giù">▼</button>`;
+  sheet(`<h3>Ordine delle ${d.tipo==='u'?'uscite':'entrate'}</h3>
+    <p class="note" style="margin:-6px 0 10px">Sposta le categorie con ▲▼. Tocca una categoria per ordinare le sue voci.</p>
+    ${d.cats.map((c,ci)=>`<div class="ord" onclick="ordDraft.open=ordDraft.open===${ci}?-1:${ci};drawOrdine()"><span><b>${esc(c)}</b>${d.subs[c].length?` <small class="mut">${d.open===ci?'▾':'▸'} ${d.subs[c].length} ${d.subs[c].length===1?'voce':'voci'}</small>`:''}</span>${btns('c',ci,ci,d.cats.length)}</div>
+      ${d.open===ci ? d.subs[c].map((s,i)=>`<div class="ord sub"><span>${esc(s)}</span>${btns('s',ci,i,d.subs[c].length)}</div>`).join('') : ''}`).join('') || '<div class="empty">Nessuna categoria</div>'}
+    <button class="btn" style="margin-top:14px" onclick="saveOrdine()">Salva ordine</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="if(confirm('Tornare all\\'ordine per importo?')){ delete (S.opz.ordine||{})[ordDraft.tipo]; S.opz.mxSort='importo'; save(); closeSheet(); render(); }">Ripristina ordine per importo</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+  $('sheet').scrollTop = top;
+}
+function mvOrd(k, ci, i, dir){
+  const a = k==='c' ? ordDraft.cats : ordDraft.subs[ordDraft.cats[ci]], j = i+dir;
+  if(j<0 || j>=a.length) return;
+  [a[i], a[j]] = [a[j], a[i]];
+  if(k==='c' && ordDraft.open===i) ordDraft.open = j; else if(k==='c' && ordDraft.open===j) ordDraft.open = i;
+  drawOrdine();
+}
+function saveOrdine(){
+  if(!S.opz.ordine) S.opz.ordine = {};
+  S.opz.ordine[ordDraft.tipo] = {cats:ordDraft.cats, subs:ordDraft.subs};
+  S.opz.mxSort = 'pers'; save(); closeSheet(); render(); toast('Ordine salvato');
 }
 
 /* ---- Patrimonio ---- */
