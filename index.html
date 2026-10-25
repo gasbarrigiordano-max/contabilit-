@@ -1248,21 +1248,37 @@ function renderAbbo(){
     <p class="note" style="margin-top:12px">Il giorno della scadenza (o alla prima apertura dell'app dopo) l'abbonamento viene registrato tra le uscite e pagato con il metodo scelto: con carta di credito finisce nell'estratto conto, con carta di debito o conto esce subito dal saldo. Poi la scadenza passa al periodo successivo.</p>`;
 }
 function openAbbo(id){
-  const a = id ? abbo().find(x=>x.id===id) : {n:'', costo:'', freq:1, next:addMonths(today(),1), pag:ui.lastPag||'', cat:catMap('u').has('Ricorrenti')?'Ricorrenti':'Abbonamenti', attivo:true};
+  const a = id ? abbo().find(x=>x.id===id) : {n:'', costo:'', freq:1, next:'', pag:ui.lastPag||'', cat:catMap('u').has('Ricorrenti')?'Ricorrenti':'Abbonamenti', attivo:true};
+  const ult = a.next ? addMonths(a.next, -a.freq) : today();
   const cats = [...catMap('u').keys()].sort();
   sheet(`<h3>${id?'Modifica abbonamento':'Nuovo abbonamento'}</h3>
     <div class="f"><label>Servizio</label><input id="ab-n" list="ab-nl" value="${esc(a.n)}" placeholder="es. Apple Music"><datalist id="ab-nl">${['SIM','Palestra','Apple Music','iCloud','Claude','Netflix','Spotify','Amazon Prime','Disney+','YouTube Premium','Assicurazione auto','Luce','Gas','Internet casa'].map(x=>`<option>${x}`).join('')}</datalist></div>
     <div class="grid2">
       <div class="f"><label>Costo (€)</label><input id="ab-c" inputmode="decimal" value="${a.costo===''?'':String(a.costo).replace('.',',')}" placeholder="0,00 €"></div>
-      <div class="f"><label>Ricorrenza</label><select id="ab-f">${FREQ.map(([v,l])=>`<option value="${v}" ${v===a.freq?'selected':''}>${l}</option>`).join('')}</select></div>
-      <div class="f"><label>Prossima scadenza</label><input type="date" id="ab-d" value="${a.next||''}"></div>
-      <div class="f"><label>Categoria</label><input id="ab-cat" list="ab-cl" value="${esc(a.cat)}"><datalist id="ab-cl">${cats.map(c=>`<option>${esc(c)}`).join('')}</datalist></div>
+      <div class="f"><label>Ricorrenza</label><select id="ab-f" onchange="abboNext()">${FREQ.map(([v,l])=>`<option value="${v}" ${v===a.freq?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="f"><label>Ultimo pagamento</label><input type="date" id="ab-u" value="${ult}" oninput="abboNext()"></div>
+      <div class="f"><label>Prossima scadenza</label><input type="date" id="ab-d" value="${a.next||''}" oninput="abboPrev()"></div>
     </div>
+    <p class="note" id="ab-prev" style="margin:-4px 0 12px"></p>
+    <div class="f"><label>Categoria</label><input id="ab-cat" list="ab-cl" value="${esc(a.cat)}"><datalist id="ab-cl">${cats.map(c=>`<option>${esc(c)}`).join('')}</datalist></div>
     <div class="f"><label>Pagato con</label><select id="ab-p">${pagOptions(a.pag||'')}</select></div>
+    ${id?'':`<label class="chk" style="justify-content:flex-start;margin:0 0 8px"><input type="checkbox" id="ab-reg"> Registra anche questo pagamento tra le uscite</label>`}
     <label class="chk" style="justify-content:flex-start;margin:0 0 12px"><input type="checkbox" id="ab-on" ${a.attivo!==false?'checked':''}> Attivo (togli la spunta per sospenderlo)</label>
     <button class="btn" onclick="saveAbbo('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delAbbo('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+  if(!a.next) abboNext(); else abboPrev();
+}
+// prossima scadenza = ultimo pagamento + ricorrenza; se è già passata, la prima data futura
+function abboNext(){
+  const u = $('ab-u').value, f = +$('ab-f').value;
+  if(!u) return abboPrev();
+  let d = addMonths(u, f); while(d < today()) d = addMonths(d, f);
+  $('ab-d').value = d; abboPrev();
+}
+function abboPrev(){
+  const d = $('ab-d').value, f = +$('ab-f').value, ogni = {1:'ogni mese',2:'ogni 2 mesi',3:'ogni 3 mesi',6:'ogni 6 mesi',12:'ogni anno'}[f];
+  $('ab-prev').textContent = d ? `Si rinnova ${ogni} · prossimo pagamento il ${fmtD(d)}, poi il ${fmtD(addMonths(d,f))}` : '';
 }
 function saveAbbo(id){
   const o = {n:$('ab-n').value.trim(), costo:round2(num($('ab-c').value)), freq:+$('ab-f').value, next:$('ab-d').value, pag:$('ab-p').value, cat:$('ab-cat').value.trim()||'Ricorrenti', attivo:$('ab-on').checked};
@@ -1270,7 +1286,14 @@ function saveAbbo(id){
   if(!o.costo) return toast('Inserisci il costo');
   if(!o.next) return toast('Inserisci la prossima scadenza');
   if(o.attivo && o.next<today() && !confirm(`La scadenza (${fmtD(o.next)}) è già passata: i pagamenti fino a oggi verranno registrati subito. Continuare?`)) return;
-  if(id) Object.assign(abbo().find(x=>x.id===id), o); else S.abbo.push({id:uid(), ...o});
+  const nid = id || uid();
+  if(id) Object.assign(abbo().find(x=>x.id===id), o); else S.abbo.push({id:nid, ...o});
+  // pagamento appena fatto: lo registro con la data dell'ultimo pagamento
+  const u = $('ab-u').value;
+  if(!id && $('ab-reg') && $('ab-reg').checked && u && !S.tx.some(x=>x.id===`ab_${nid}_${u}`)){
+    const tx = {id:`ab_${nid}_${u}`, d:u, t:'u', cat:o.cat, sub:o.n, amt:o.costo, note:freqName(o.freq), abid:nid, ...pagParse(o.pag)};
+    S.tx.push(tx); applyPag(tx);
+  }
   save(); closeSheet(); payAbbo(); render(); toast('Salvato');
 }
 function delAbbo(id){
