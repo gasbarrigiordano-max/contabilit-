@@ -110,6 +110,16 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .acct-n{display:flex;align-items:center;gap:12px;min-width:0}
 .acct-n>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acct-n small{display:block;font-size:11px;color:var(--ink3);margin-top:1px}
+/* patrimonio: andamento */
+.pchart{position:relative;margin-top:12px;min-height:60px}
+.pchart svg{display:block;touch-action:pan-y;outline:none}
+.pchart .ax{fill:var(--ink3);font-size:10px;font-family:'JetBrains Mono',monospace}
+.ptip{position:absolute;display:none;pointer-events:none;background:#0f1513;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11.5px;color:var(--ink2);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.ptip .v{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--ink)}
+.ptip .m{color:var(--ink3);margin-bottom:4px}
+.pat-delta{display:flex;gap:22px}
+.pat-delta small{display:block;color:var(--ink3);font-size:11px;font-weight:600;margin-bottom:3px}
+.pat-delta b{font-size:13px}
 /* patrimonio: riepilogo con composizione */
 .pat-hero{display:grid;gap:16px}
 .pat-hero .kpi b{font-size:30px;letter-spacing:-.02em}
@@ -354,7 +364,7 @@ const kdb = {
    Salvataggio ottimistico: lo stato in memoria cambia subito, l'invio parte dopo 400 ms
    e solo per le sezioni modificate, con nuovi tentativi se la rete manca. */
 const KEY = 'bilancio:v1';
-const SEZ = ['tx','conti','rate','inv','trading','carte','servizi','opz'];
+const SEZ = ['tx','conti','rate','inv','trading','carte','servizi','opz','storico'];
 const localStore = {
   get(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } },
   set(v){ try{ localStorage.setItem(KEY, JSON.stringify(v)); }catch(e){} },
@@ -609,6 +619,45 @@ function applyPag(t, sign=1){
   if(!t || !t.pag || !t.conto) return;
   const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='u'?1:-1)*t.amt);
 }
+/* ---- Storico del patrimonio: una "foto" per mese ----
+   {m:'YYYY-MM', d (giorno in cui è stata scattata), tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}
+   tipo 'fine' = ultimo giorno del mese · 'tardi' = alla prima apertura dopo, con i saldi riportati
+   a fine mese · 'ora' = salvata a mano durante il mese · 'inserito' = mese passato inserito a mano o da CSV
+   (mai sovrascritto in automatico). */
+const GRUPPI = ['Banche','Cash','Investimenti'];
+// saldi dei conti a una data passata: tolgo gli effetti registrati dall'app dopo quella data
+function contiAl(data){
+  const v = new Map(S.conti.map(c=>[c.id, c.v]));
+  const add = (id, x) => { if(v.has(id)) v.set(id, round2(v.get(id) + x)); };
+  S.tx.forEach(t=>{
+    if(t.d<=data) return;
+    if(t.pag && t.conto) add(t.conto, t.t==='u' ? t.amt : -t.amt);   // debito, conto, contanti
+    else if(t.rid && t.conto && !t.carta) add(t.conto, t.amt);        // rata pagata dal conto
+  });
+  carte().forEach(c=>(c.es||[]).forEach(e=>{ if(e.d>data && e.conto) add(e.conto, e.tot); })); // estratti conto
+  return S.conti.map(c=>({n:c.n, g:c.g, v:v.get(c.id)}));
+}
+function fotoPatr(m, d, tipo, conti){
+  const g = {}; GRUPPI.forEach(k=>g[k] = round2(sum(conti.filter(c=>c.g===k).map(c=>c.v))));
+  return {m, d, tot:round2(sum(conti.map(c=>c.v))), g, conti, tipo};
+}
+function putFoto(f){ S.storico = S.storico.filter(x=>x.m!==f.m).concat(f).sort((a,b)=>a.m.localeCompare(b.m)); }
+// a ogni controllo: l'ultimo giorno del mese aggiorno la foto del mese; dopo, se manca, la scatto "in ritardo"
+function autoStorico(){
+  if(!S.storico) S.storico = [];
+  if(!S.opz) S.opz = {};
+  // lo storico automatico parte dal mese in cui l'app comincia a seguirlo: per i mesi prima non conosce i movimenti
+  if(!S.opz.storicoDal){ S.opz.storicoDal = thisMonth(); save(); }
+  const t = today(), m = t.slice(0,7), prev = addYM(m,-1), get = x => S.storico.find(f=>f.m===x);
+  let f = null;
+  if(t===lastDay(m) && (get(m)||{}).tipo!=='inserito') f = fotoPatr(m, t, 'fine', S.conti.map(c=>({n:c.n, g:c.g, v:c.v})));
+  else if(!get(prev) && prev>=S.opz.storicoDal && S.conti.length) f = fotoPatr(prev, t, 'tardi', contiAl(lastDay(prev)));
+  if(!f) return 0;
+  const old = get(f.m);
+  if(old && JSON.stringify({...old, d:0}) === JSON.stringify({...f, d:0})) return 0;
+  putFoto(f); save();
+  return 1;
+}
 // dopo ogni caricamento dei dati (avvio, sblocco, backup importato, ritorno in primo piano)
 function afterLoad(){
   S.rate = S.rate.map(migrateRata);
@@ -617,7 +666,7 @@ function afterLoad(){
   if(!S.carte){ S.carte = seedCarte(); seedConti(); }
   if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
-  payDueRate(); settleCards();
+  payDueRate(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
@@ -797,9 +846,12 @@ const LOGHI = {
   ing:'data:image/webp;base64,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',
   n26:'data:image/webp;base64,UklGRroEAABXRUJQVlA4IK4EAABQGACdASpgAGAAPj0ai0QiIaEUCq1UIAPEocAAqa0nt8Pe/8gHonckYUfzAfsR6tPSAfsB1lvoIeWJ7Hn7N/rf7N3//zh3+galf6gPifxXCztX7oP1X/AegHcZ8VdHr5+md76O9g3+Xf3DrQftV7ABtbAQU5arP+ppuxCU5ngj5V+XxVfrE7mTrGSqcY4kf0MvtU9fjiKpeE26nFhI6icr3UoMuUTyyDbe616m9uWdz3UJEunGfJDoJ0gaIljS1Dq08p64mdukEFw/IAD+bx80zD3gJf/7zH/9uU/9zH/6YhKRBNNR6K3+DXBYcEvEFUMozjCC1+dP1Zzz0sfoSKFNSDqJXR1GbdYP7nq7N3956NM8EZfEQvt8rngZ8ximW8G4/8zjQ3/tpg+1UsLwrXSvEx+bNGwwmwiRjZc2i3pQJorXba6H5G2DwPiQR38UvUig4CM3HtZ+cJIMSMlUR8Cl86GYkjf6sjTKYk88b0k5oogf+/th3oyLMzx5ZS3rrd5G9Tw+334IZ2SH4et4H0sqeGv541NT06feqk44TMXZ878meLh0Z0xVa/1xDFhVidBb1clYR6os0MLbZspsWn1eyDdvaieyvD+7LHDl6vLsto8wv5/NEXxnq92k/8nFYopS3OLSUrvZ+QyIiNOQXySSGLxKvQ0X1Ov9qTcsSwdYNr/xP9xbBDvuttrRTrcfzTYo+/4u6fHVSkmRvaHHtAxE7/f9djFs/3sghD9G939aZnFlNY74buDCT0mTAf16g4A9Suu7djbp9y/0VlLLeJJkv3mPyMMmOKQIXm3sz3DZWZ2khW0LdX8ajfjNgNi484RCz7wQSbeqCEdb6GU47RnCMv/FPuto/bI1nDiVXoW7H4D08DQn7M/oy3owrIxeldUMDnp+4LlH3mxoI6ZvTLG5YOf/j6u7Kch/25biB+NAP3ZH9wMoiVZ8ywitcXaWoGLZy8Zuu6ZqpGeLD0WIGIcpw88UOWHcKN4XgwiRqi2OvW/UNt4zIW+7m+Du4Kk6MvvOUjMbWSPqS//4Qn/eD0nE4bRxzV0qIQsMmX+cbuFQCHgk0f3N6Smh8pDGZGmwDSo0dvqqP/AbQ5z9JAFXC6DY6r9yQB4R32n+2j7nCPg5eGHraFXWbfjoJf0UbrfmZk67oN3Ajc5AZzlp5fpxVHfVx+J8M1M2ieT2q4VSMrfR1/VdkIPya6XWXl5Ks52CYHip/6Jm8IkO5T+7Mjf8K6i1mp8jInAlkn4rfxrP8mj/RJeEkkdmPS/ucUxEtADZl2RRzsY8dXsiH3qOljpzgaQx84n6abytBhnn7zP8dyUzX49b06cqg7OiF2QTsI2lW7GgOEbHi2C8pMYxNa38RvDEO+HPUqs9BNFyq36jUsfOLxKL2S0ty2y+wuQVqSDvbxOF+HuKwi8E5m/EI2dGnTgBJY/OMTR6Rz+lQocUdXJveGAY49hw7zxKbXU/UhnSWrLuBq4C/OAN3n0C/cdC3EyfxpCdXtzSRtxVxPn/HwdZXIp2xsgwa6Vp6SQfIvPhCavWhFw+xvF/ZgG5w7oBLftEB/BVHfFAp5GyQBhNFoo5q9g47HJ1Q+io9eAAAAAA',
   buddy:'data:image/webp;base64,UklGRjYDAABXRUJQVlA4ICoDAAAQEgCdASpgAGAAPj0ci0QiIaEUeZzsIAPEoAeHn4e83tuBkNsB5gP1G/W7sAegB/Vf7B1gHoAfqB6Y/sSfuJ+4Hs6f+6LH045Wnef4GaVnGP6D2fzNS6yhZ80CfmTi5//ximoFQL7cPKBWSnP4RI1tHgvBs8/9yEoKHPS+K1rl05fbABmYV7lWUKZ2hRFKRMq75V/DAYObFAAA/v6lNg0fxnf9e/qb//OY/ybd+HAy8nzvwe1GEHN/I53RxtznBpte/69mXLPab5SA1E8xsg7LeCt/tfVUDYrdBUweE4DfLmkVc6xS2VM293zKrnmf4BVJxFOZ5IEQrhVyq7Kl9cWQR35hHl74eUy84J7nyPOPv9CvdRfJv6req+4/uFCv6+wme4CDpvFnWyPQoNcWBzlPAFPIqKJQlcl6xSZ8hdzmv/4Y+yKOlFWK1/ramijelwS/fbv+fbHjbMIdexCZO7eF/+/9tDsYjzmzlL2yG7G31RZRvkLhmwNqT70PBGqyVUegBCEenYyNrnNWXNKo66XuX8tM01pUDAtNWPxcAcsHCoAzdtoCAnDI20SU0uqD93G/E0+qMO8ABC3/2AZKoH32H2mCPdWuZHUm079lo3lsc2NPUPMq3FY4H/b7t18KK/j1CahlEOSLMZeUktzX4XXa9ZW91mRXMNONXr/3/x+FnAScAiIHeYIJlf9HIQ02pu/B824SHC7gq0MYiZ0TP5gf8aSPfaMbeHPjmilcQ3+EV9ZasPqutxrhwXO5zb5qzf2OLRhdU57bdGtyxpr3VrkJr+y0D79SsVRHL0LBEwCJitnvKNgNUSIg8GcMBG0VQUPfm8PmIv8UTLCTzprq4hvcz06fVUzRj4lKpQquPg7nK35L/2Us+h/FUgH/VyHRSKhRA0yLxxfkTqUybksOOgdeANMZeA8Jr6qD/478gZX2/PsFtpp7AT3n0qdset8VUuwwHf9EOorjjpYv4eBU8UhAIhQYQt/6ucG5ZfitwIs8r/Jvf2s0KeAXO1nTW/xTpfnr9Hla7Nf9Nto88v3vhnjwv1dozGu+njEAa3ifIHTMvMvLFAfavwAAAAA=',
-  bbva:'data:image/webp;base64,UklGRp4FAABXRUJQVlA4IJIFAAAQHACdASpgAGAAPj0cjEQiIaGUDHTkIAPEoAeZn3PzY6v/iODnOF2Y5HfUBtkvMB+wv7M9ib0AP0t6xv0Cv2u9Lr9nvhI/Y39r/aa/+maS9UDni/Mnr5nFvq/94/KHTDP5P/YPyv/kH7R8iRyT+r/4r7Sdcb/JP8fxtEb/+o9HP+3+7T2ofOP/K/tPwB/yf+hf6n+4e1z68f289jEtE5JgdZMDV4ZA/fU6f9ScKvldfuA3RIP2YkHa5yoA9u/OTJujZRONwmiNx2eWg7UKwB2qD9B/RuHUI+RyTIy82lNqm9kNEbIy0wOkgAD+/W7z//+Ehf+Ehf+EhfxDL//0fXe6wkqEybQiAmf6NsbfbvN1nok+5yMr3O38W8aWDNyoOl07OCOjyCCH2ASTZ7S4Ef1xPgCjZodr9YTpbU6MGPPyRRTLLoOEoCsAnppbbnNFDQxb1qkqrMoXc/B3GqTrjEE51FRztLAu8qAbQ3jy3eeJ32Lp0KgOlcCibxliePwIY1/yGnHMhhOTEFJoNWmuVYXvwsTvm7zJvRa0Ve+DgNnNo0kuFy5tTauqgy7fS88Gic+suiL3JpAjOruzLr20t8zNSyV0Lid3xs9dvpAkn4MzIOen0fqXK9RUOejrylAxMC7mpYeBfYN9F6j7rz5/PddKaSm1QLPcjd+KzmuWqR7j7T+gljj4PbF+hQZ8BY6XF62TdLjf86qCB6M1R5LHxxLrI82YXULRmCU7h4P2epPROFTh/IEK/mgu8VgVC4OPXSa03Cnkyjyded95ua2K6rxxJdJI8jzt86bzqCwHJnd/Zn/GBdBNjrTuh9/cnr1RxmOkz3fObunzmxBg80+DmJGQ3cfDpBri4IcAPgLBnDI4x7jERBrq+mpYHTyHyHm3X8Av6m7xgTTrLMrqR4ePH7tL/TGfxbVAwuBP2g0HbqmZRC/+5l63mTDFz3akbPO6ZdaDjlLiNvuiRanPr7EgXfNBCyAa/3VU/O+O5906vdfbX8c/Ikb/U+/hAXzQjZesj8NK8iwsGNdzy0ut+Oepf/7H1rBaeSdtNcfeOhzY9Ci9ntxJPX+Xda3DjdcTs7oLs1VaC5Zxdb0Qxriphvd/5hcPaezK9LsoPmRXEhnJLR41r1fqZqNS/+Nvcr3a2KANm/+fUcIhSu54X/P3v0Qeh2D6luXn2bruxluXLHd8B2cj898/n89JlDXeUP3Dtach6YLjCWB4wlt79daqJOaKTWzeDnG/uFcsqQg/FtYqeM1hgrAZRfxFx+LO2vCSz/+ozHmeq7/zbjrU560FI+PKrcFEJzGa3+fnf/K+DtgW/4oIX/+pu42MGddGMkf//o85NcYx7aC/QGE5V5bHOhF8CI3EaCIDb27EnUn5Ye/O1lFnIPkZu8cKdb+5+RuiSi8ELKB9YgMIqS+qjqHxB+wmNx3+kMOTVu5wf8ctgjlpEz4rLbqfaPwATGwBKQjLskMQ5Cd+WBN15JKn//pQB/+mUaq/h1LjaWr//xa6R+jHsFWiLrZBC0dkn7EzRB70VRPFtlO6475ZkKNCKGjCkLd7GJdYkbU2hmBPuILbPz8zJ15aOdHjoOAkstSzm7PSLeoCBe2lPGI6v5Nxs9Gy9Rg8HtpEFJTVccKmHIai9copXbws1ykRUs/DPyo+qxIFEVRpKP63k4UvV13+05bn7Q50KdSd5oNsqENc3xf4/uQj3c//qTihIw1fDWe2KhWkUXRQxjYApZT+IJxKAAZTUa/+XDTf5qgc3H5FPSdScmvBU+Bsitj3HlUgGy4fNOqD582jS/GmKTfoTfZhNgzD5lWXSdiOxv+J+eYY595H9of7iZ9274CJ+D7dea2dK9sSHQAG2lAaQ9oWdY4i3Y1wQkkKdkb8SjBlomsYCKz/lHmy6QAAAAAA'
+  bbva:'data:image/webp;base64,UklGRp4FAABXRUJQVlA4IJIFAAAQHACdASpgAGAAPj0cjEQiIaGUDHTkIAPEoAeZn3PzY6v/iODnOF2Y5HfUBtkvMB+wv7M9ib0AP0t6xv0Cv2u9Lr9nvhI/Y39r/aa/+maS9UDni/Mnr5nFvq/94/KHTDP5P/YPyv/kH7R8iRyT+r/4r7Sdcb/JP8fxtEb/+o9HP+3+7T2ofOP/K/tPwB/yf+hf6n+4e1z68f289jEtE5JgdZMDV4ZA/fU6f9ScKvldfuA3RIP2YkHa5yoA9u/OTJujZRONwmiNx2eWg7UKwB2qD9B/RuHUI+RyTIy82lNqm9kNEbIy0wOkgAD+/W7z//+Ehf+Ehf+EhfxDL//0fXe6wkqEybQiAmf6NsbfbvN1nok+5yMr3O38W8aWDNyoOl07OCOjyCCH2ASTZ7S4Ef1xPgCjZodr9YTpbU6MGPPyRRTLLoOEoCsAnppbbnNFDQxb1qkqrMoXc/B3GqTrjEE51FRztLAu8qAbQ3jy3eeJ32Lp0KgOlcCibxliePwIY1/yGnHMhhOTEFJoNWmuVYXvwsTvm7zJvRa0Ve+DgNnNo0kuFy5tTauqgy7fS88Gic+suiL3JpAjOruzLr20t8zNSyV0Lid3xs9dvpAkn4MzIOen0fqXK9RUOejrylAxMC7mpYeBfYN9F6j7rz5/PddKaSm1QLPcjd+KzmuWqR7j7T+gljj4PbF+hQZ8BY6XF62TdLjf86qCB6M1R5LHxxLrI82YXULRmCU7h4P2epPROFTh/IEK/mgu8VgVC4OPXSa03Cnkyjyded95ua2K6rxxJdJI8jzt86bzqCwHJnd/Zn/GBdBNjrTuh9/cnr1RxmOkz3fObunzmxBg80+DmJGQ3cfDpBri4IcAPgLBnDI4x7jERBrq+mpYHTyHyHm3X8Av6m7xgTTrLMrqR4ePH7tL/TGfxbVAwuBP2g0HbqmZRC/+5l63mTDFz3akbPO6ZdaDjlLiNvuiRanPr7EgXfNBCyAa/3VU/O+O5906vdfbX8c/Ikb/U+/hAXzQjZesj8NK8iwsGNdzy0ut+Oepf/7H1rBaeSdtNcfeOhzY9Ci9ntxJPX+Xda3DjdcTs7oLs1VaC5Zxdb0Qxriphvd/5hcPaezK9LsoPmRXEhnJLR41r1fqZqNS/+Nvcr3a2KANm/+fUcIhSu54X/P3v0Qeh2D6luXn2bruxluXLHd8B2cj898/n89JlDXeUP3Dtach6YLjCWB4wlt79daqJOaKTWzeDnG/uFcsqQg/FtYqeM1hgrAZRfxFx+LO2vCSz/+ozHmeq7/zbjrU560FI+PKrcFEJzGa3+fnf/K+DtgW/4oIX/+pu42MGddGMkf//o85NcYx7aC/QGE5V5bHOhF8CI3EaCIDb27EnUn5Ye/O1lFnIPkZu8cKdb+5+RuiSi8ELKB9YgMIqS+qjqHxB+wmNx3+kMOTVu5wf8ctgjlpEz4rLbqfaPwATGwBKQjLskMQ5Cd+WBN15JKn//pQB/+mUaq/h1LjaWr//xa6R+jHsFWiLrZBC0dkn7EzRB70VRPFtlO6475ZkKNCKGjCkLd7GJdYkbU2hmBPuILbPz8zJ15aOdHjoOAkstSzm7PSLeoCBe2lPGI6v5Nxs9Gy9Rg8HtpEFJTVccKmHIai9copXbws1ykRUs/DPyo+qxIFEVRpKP63k4UvV13+05bn7Q50KdSd5oNsqENc3xf4/uQj3c//qTihIw1fDWe2KhWkUXRQxjYApZT+IJxKAAZTUa/+XDTf5qgc3H5FPSdScmvBU+Bsitj3HlUgGy4fNOqD582jS/GmKTfoTfZhNgzD5lWXSdiOxv+J+eYY595H9of7iZ9274CJ+D7dea2dK9sSHQAG2lAaQ9oWdY4i3Y1wQkkKdkb8SjBlomsYCKz/lHmy6QAAAAAA',
+  cro:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzEwM2Y2OCIvPjxwb2x5Z29uIHBvaW50cz0iNTAsMTcuNSA3OC4xLDMzLjYgNzguMSw2Ni41IDUwLDgyLjcgMjIuMSw2Ni41IDIyLjEsMzMuNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMuMSIvPjxwb2x5Z29uIHBvaW50cz0iMzguMiwzMC42IDYxLjUsMzAuNiA2My41LDQyLjUgMzUuNiw0Mi41IiBmaWxsPSIjZmZmIi8+PHBvbHlnb24gcG9pbnRzPSI0Mi41LDQ0LjQgNTcuNCw0NC40IDU1LDUwLjkgNTUuNiw1OC41IDQ0LjIsNTguNSA0NC45LDUwLjkiIGZpbGw9IiNmZmYiLz48cG9seWdvbiBwb2ludHM9IjI3LjcsNTIuNiAzNS42LDQ2LjYgNDIuMyw1MC45IDQyLjMsNTkuMiA0Ny42LDY0LjEgNDcuNiw2Ni42IDQyLjUsNzAuOSAzOC4zLDcwLjkiIGZpbGw9IiNmZmYiLz48cG9seWdvbiBwb2ludHM9IjcyLjMsNTIuNiA2NC40LDQ2LjYgNTcuNyw1MC45IDU3LjcsNTkuMiA1Mi40LDY0LjEgNTIuNCw2Ni42IDU3LjUsNzAuOSA2MS43LDcwLjkiIGZpbGw9IiNmZmYiLz48L3N2Zz4K',
+  ibkr:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9Ii02MCAtNTAgNjc0IDY3NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeDI9IjEiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzllMGQxOCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Q4MTIyMiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHg9Ii02MCIgeT0iLTUwIiB3aWR0aD0iNjc0IiBoZWlnaHQ9IjY3NCIgZmlsbD0iI2ZmZiIvPjxwb2x5Z29uIHBvaW50cz0iMTM1LDI4NSAzNzgsMCAyMTUsMzc1IDEzNSw1NTMiIGZpbGw9IiNkODEyMjIiLz48cG9seWdvbiBwb2ludHM9IjIxNSwzNzUgMzgwLDU1MyAxMzUsNTUzIiBmaWxsPSJ1cmwoI2cpIi8+PGNpcmNsZSBjeD0iMzQ1IiBjeT0iMzQ4IiByPSI3MyIgZmlsbD0iI2Q4MTIyMiIvPjwvc3ZnPgo=',
+  bondora:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iI2I1ZjQ0YSIvPjxwYXRoIGQ9Ik05MCAxMDBIMjI4UTI1MiAxNjAgMjUzIDI3MkMxNjUgMjcyIDkwIDIwOCA5MCAxNDBaIiBmaWxsPSIjMTExODI3Ii8+PHBhdGggZD0iTTQyMiAxMDBIMjg0UTI2MCAxNjAgMjU5IDI3MkMzNDcgMjcyIDQyMiAyMDggNDIyIDE0MFoiIGZpbGw9IiMxMTE4MjciLz48cGF0aCBkPSJNMjQwIDI2OEgyNzJWMzI2UTI1NiAzMTggMjQwIDMyNloiIGZpbGw9IiMxMTE4MjciLz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIzODQiIHI9IjM0IiBmaWxsPSIjMTExODI3Ii8+PC9zdmc+Cg=='
 };
-const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i]];
+const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i],['cro',/crypto/i],['ibkr',/interactive|ibkr/i],['bondora',/bondora/i]];
 function contoIcon(c){
   const m = LOGO_RE.find(([k,re])=>re.test(c.n));
   return m ? `<img class="logo" src="${LOGHI[m[0]]}" alt="">` : `<i class="logo l">${esc((c.n||'?')[0].toUpperCase())}</i>`;
@@ -808,7 +860,7 @@ const GRP = [['Banche','var(--acc)'],['Cash','var(--warn)'],['Investimenti','#60
 function renderPat(){
   const patr = sum(S.conti.map(c=>c.v)), base = patr>0 ? patr : 1;
   const tot = g => sum(S.conti.filter(c=>c.g===g).map(c=>c.v));
-  const pct = v => v>0 && patr>0 ? Math.round(v/base*100)+'%' : '–';
+  const pct = v => v>0 && patr>0 ? (v/base<0.005 ? '<1%' : Math.round(v/base*100)+'%') : '–';
   // riepilogo: totale + barra della composizione (Banche / Cash / Investimenti)
   let html = `<div class="card hero pat-hero">
     <div class="kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
@@ -822,7 +874,118 @@ function renderPat(){
       ${items.map(c=>`<div class="acct" onclick="openConto('${c.id}')"><span class="acct-n">${contoIcon(c)}<span>${esc(c.n)}<small>${pct(c.v)} del patrimonio</small></span></span><b class="mono ${c.v?'':'mut'}">${eur(c.v,0)}</b></div>`).join('') || '<div class="empty">—</div>'}</div></div>`;
   });
   html += `</div><button class="btn ghost pat-add" onclick="openConto()">+ Aggiungi conto</button>`;
+  html += storicoHTML();
   $('v-pat').innerHTML = html;
+  drawPatrChart();
+}
+/* ---- Andamento del patrimonio ---- */
+const fmtM = m => `${M3[+m.slice(5)-1]} ${m.slice(0,4)}`;
+const delta = (a,b) => b ? {v:round2(a.tot-b.tot), p:b.tot ? (a.tot-b.tot)/Math.abs(b.tot)*100 : null} : null;
+const dTxt = x => !x ? '–' : `${x.v>=0?'▲ +':'▼ −'}${eur(Math.abs(x.v),0)}${x.p!=null?` (${x.v>=0?'+':'−'}${Math.abs(x.p).toFixed(1).replace('.',',')}%)`:''}`;
+function storicoSerie(){
+  const st = S.storico||[]; if(!st.length) return [];
+  const n = {12:12, 24:24, all:9999}[ui.patR||12];
+  return st.slice(-n);
+}
+function storicoHTML(){
+  const st = S.storico||[], serie = storicoSerie(), last = st.at(-1), prev = st.at(-2);
+  const gen = last && st.filter(f=>f.m.slice(0,4)===last.m.slice(0,4))[0];
+  const dGen = gen && gen!==last ? delta(last, st[st.indexOf(gen)-1] || gen) : null;
+  const tag = {fine:'fine mese', tardi:'riportata a fine mese', ora:'salvata a mano', inserito:'inserita a mano'};
+  const righe = st.slice().reverse().map((f,i,a)=>{ const d = delta(f, a[i+1]);
+    return `<div class="tx" onclick="openFoto('${f.m}')"><div class="mid"><b>${MESI[+f.m.slice(5)-1]} ${f.m.slice(0,4)}</b><small>${tag[f.tipo]||''}${f.tipo!=='inserito'?' · '+fmtD(f.d):''}</small></div>
+      <div style="text-align:right"><b class="mono">${eur(f.tot,0)}</b><small class="mono ${!d?'mut':d.v>=0?'pos':'neg'}" style="display:block;font-size:11px">${dTxt(d)}</small></div></div>`; }).join('');
+  return `<h2 class="sec">Andamento del patrimonio</h2>
+    <div class="card">
+      <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:10px">
+        <div class="pat-delta"><div><small>Ultimo mese</small><b class="mono ${!prev?'mut':delta(last,prev).v>=0?'pos':'neg'}">${dTxt(last&&delta(last,prev))}</b></div>
+          <div><small>Da inizio ${last?last.m.slice(0,4):'anno'}</small><b class="mono ${!dGen?'mut':dGen.v>=0?'pos':'neg'}">${dTxt(dGen)}</b></div></div>
+        <div class="chips" style="margin:0">${[[12,'12 mesi'],[24,'2 anni'],['all','Tutto']].map(([v,l])=>`<button class="chip ${String(ui.patR||12)===String(v)?'on':''}" onclick="ui.patR='${v}';render()">${l}</button>`).join('')}</div>
+      </div>
+      <div id="pchart" class="pchart">${serie.length ? '' : '<div class="empty">Ancora nessun mese salvato: la prima foto del patrimonio viene scattata il '+fmtD(lastDay(thisMonth()))+'.</div>'}</div>
+    </div>
+    <div class="gh"><b>Storico mensile</b><span><button class="btn sm ghost" onclick="salvaOra()">Salva ${MESI[now.getMonth()].toLowerCase()}</button> <button class="btn sm ghost" onclick="openFoto()">+ Mese passato</button></span></div>
+    ${righe || '<div class="empty">Nessun mese salvato</div>'}
+    <p class="note" style="margin-top:10px">L'ultimo giorno di ogni mese il patrimonio viene salvato in automatico. Se quel giorno non apri l'app, viene salvato alla prima apertura dopo, riportando i saldi a fine mese (tolti i movimenti registrati nel frattempo).</p>`;
+}
+// grafico a linea del totale: asse Y non da zero (le variazioni mensili sono piccole rispetto al totale)
+function drawPatrChart(){
+  const box = $('pchart'), serie = storicoSerie();
+  if(!box || !serie.length) return;
+  const W = Math.max(280, box.clientWidth), H = WIDE.matches ? 240 : 190, L = 46, Rr = 14, T = 14, B = 26;
+  const vals = serie.map(f=>f.tot);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if(hi-lo < Math.max(1, Math.abs(hi))*0.02){ const pad = Math.max(100, Math.abs(hi)*0.02); lo -= pad; hi += pad; }
+  const step = (()=>{ const raw = (hi-lo)/4, e = 10**Math.floor(Math.log10(raw)), f = raw/e; return (f<=1?1:f<=2?2:f<=5?5:10)*e; })();
+  lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step;
+  const x = i => serie.length===1 ? L+(W-L-Rr)/2 : L + i*(W-L-Rr)/(serie.length-1);
+  const y = v => T + (hi-v)/(hi-lo||1)*(H-T-B);
+  const k = v => Math.abs(v)>=1000 ? (v/1000).toLocaleString('it-IT',{maximumFractionDigits:1})+'K' : String(Math.round(v));
+  let g = '';
+  for(let v=lo; v<=hi+1e-6; v+=step) g += `<line x1="${L}" x2="${W-Rr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" class="ax">${k(v)} €</text>`;
+  const every = Math.ceil(serie.length / Math.floor((W-L-Rr)/44));
+  serie.forEach((f,i)=>{ if(i%every===0 || i===serie.length-1) g += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" class="ax">${M3[+f.m.slice(5)-1]}${f.m.slice(5)==='01'||i===0?' '+f.m.slice(2,4):''}</text>`; });
+  const path = serie.map((f,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(f.tot).toFixed(1)}`).join('');
+  const lastI = serie.length-1;
+  box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Andamento del patrimonio, ultimo valore ${eur(vals[lastI],0)}">
+    ${g}<path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(lastI)}" cy="${y(vals[lastI])}" r="4.5" fill="var(--acc)" stroke="var(--panel)" stroke-width="2"/>
+    <line id="pc-x" y1="${T}" y2="${H-B}" stroke="var(--ink3)" stroke-width="1" style="display:none"/>
+    <circle id="pc-d" r="5" fill="var(--acc)" stroke="var(--panel)" stroke-width="2" style="display:none"/>
+    <rect x="${L}" y="0" width="${W-L-Rr}" height="${H}" fill="transparent" id="pc-hit"/></svg>
+    <div class="ptip" id="pc-tip"></div>`;
+  const svg = box.querySelector('svg'), tip = $('pc-tip');
+  const show = i => {
+    const f = serie[i], d = delta(f, (S.storico||[])[S.storico.indexOf(f)-1]);
+    $('pc-x').setAttribute('x1', x(i)); $('pc-x').setAttribute('x2', x(i)); $('pc-x').style.display='';
+    $('pc-d').setAttribute('cx', x(i)); $('pc-d').setAttribute('cy', y(f.tot)); $('pc-d').style.display='';
+    tip.replaceChildren();
+    const line = (t, cls) => { const e = document.createElement('div'); e.textContent = t; if(cls) e.className = cls; tip.appendChild(e); };
+    line(eur(f.tot,0), 'v'); line(`${MESI[+f.m.slice(5)-1]} ${f.m.slice(0,4)}`, 'm');
+    GRUPPI.forEach(k=>line(`${k} ${eur(f.g[k]||0,0)}`));
+    if(d) line(dTxt(d), d.v>=0?'pos':'neg');
+    tip.style.display = 'block';
+    const tx = Math.min(Math.max(x(i) - tip.offsetWidth/2, 0), W - tip.offsetWidth);
+    tip.style.left = tx+'px'; tip.style.top = Math.max(0, y(f.tot) - tip.offsetHeight - 12)+'px';
+  };
+  const hide = () => { tip.style.display='none'; $('pc-x').style.display='none'; $('pc-d').style.display='none'; };
+  const near = e => { const r = svg.getBoundingClientRect(), px = e.clientX - r.left; let b=0; serie.forEach((f,i)=>{ if(Math.abs(x(i)-px) < Math.abs(x(b)-px)) b=i; }); return b; };
+  let cur = lastI;
+  svg.addEventListener('pointermove', e=>show(cur=near(e)));
+  svg.addEventListener('pointerdown', e=>show(cur=near(e)));
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('keydown', e=>{ if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ cur = Math.min(lastI, Math.max(0, cur + (e.key==='ArrowLeft'?-1:1))); show(cur); e.preventDefault(); } });
+  svg.addEventListener('focus', ()=>show(cur)); svg.addEventListener('blur', hide);
+}
+let patResize; window.addEventListener('resize', ()=>{ if(ui.tab!=='pat') return; clearTimeout(patResize); patResize=setTimeout(drawPatrChart, 150); });
+function salvaOra(){
+  const m = thisMonth(), old = (S.storico||[]).find(f=>f.m===m);
+  if(old && old.tipo==='inserito' && !confirm('Questo mese era inserito a mano: sostituirlo con i saldi di oggi?')) return;
+  putFoto(fotoPatr(m, today(), 'ora', S.conti.map(c=>({n:c.n, g:c.g, v:c.v}))));
+  save(); render(); toast(`Patrimonio di ${MESI[now.getMonth()].toLowerCase()} salvato (verrà aggiornato l'ultimo giorno del mese)`);
+}
+// dettaglio di un mese, oppure inserimento di un mese passato (m vuoto)
+function openFoto(m){
+  const f = m && S.storico.find(x=>x.m===m);
+  const val = k => f ? String(f.g[k]||0).replace('.',',') : '';
+  sheet(`<h3>${f ? `Patrimonio · ${MESI[+f.m.slice(5)-1]} ${f.m.slice(0,4)}` : 'Aggiungi un mese passato'}</h3>
+    ${f && f.conti && f.conti.length && f.tipo!=='inserito' ? `<div class="card" style="padding:4px 14px;margin-bottom:12px">${f.conti.map(c=>`<div class="acct" style="cursor:default"><span class="acct-n">${contoIcon(c)}<span>${esc(c.n)}<small>${c.g}</small></span></span><b class="mono">${eur(c.v,0)}</b></div>`).join('')}</div>
+      <p class="note" style="margin:-4px 0 12px">Salvato il ${fmtD(f.d)}. Puoi correggere i totali qui sotto: il mese diventa "inserito a mano" e non verrà più aggiornato in automatico.</p>` : ''}
+    ${f ? '' : `<div class="f"><label>Mese</label><input type="month" id="sf-m" value="${addYM(thisMonth(),-1)}" max="${thisMonth()}"></div>`}
+    <div class="grid2">${GRUPPI.map((k,i)=>`<div class="f" ${i===2?'style="grid-column:1/-1"':''}><label>${k} (€)</label><input id="sf-${i}" inputmode="decimal" value="${val(k)}" placeholder="0 €"></div>`).join('')}</div>
+    <button class="btn" onclick="saveFoto('${f?f.m:''}')">Salva</button>
+    ${f?`<button class="btn danger" style="margin-top:8px" onclick="if(confirm('Eliminare questo mese dallo storico?')){S.storico=S.storico.filter(x=>x.m!=='${f.m}');save();closeSheet();render();}">Elimina mese</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+function saveFoto(m){
+  const mese = m || ($('sf-m') && $('sf-m').value);
+  if(!/^\d{4}-\d{2}$/.test(mese||'')) return toast('Scegli il mese');
+  const old = S.storico.find(x=>x.m===mese);
+  const vals = GRUPPI.map((k,i)=>num($('sf-'+i).value));
+  if(old && !m && !confirm(`${fmtM(mese)} è già nello storico: sostituirlo?`)) return;
+  if(old && m && GRUPPI.every((k,i)=>round2(old.g[k]||0)===round2(vals[i]))){ closeSheet(); return; }
+  putFoto(fotoPatr(mese, today(), 'inserito', GRUPPI.map((k,i)=>({n:k, g:k, v:vals[i]}))));
+  save(); closeSheet(); render(); toast('Mese salvato');
 }
 function openConto(id){
   const c = id ? S.conti.find(x=>x.id===id) : {g:'Banche',n:'',v:0};
@@ -1226,7 +1389,8 @@ function openSettings(){
       <option value="conti">Conti (gruppo;nome;saldo)</option>
       <option value="rate">Rate (metodo;prodotto;rata;residue;prossima rata;conto)</option>
       <option value="inv">Investimenti (voce;livello;investito;attuale)</option>
-      <option value="trading">Trading P&L (data;importo)</option></select></div>
+      <option value="trading">Trading P&L (data;importo)</option>
+      <option value="storico">Storico patrimonio (mese;banche;cash;investimenti)</option></select></div>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px"><input type="checkbox" id="csv-rep" style="width:auto"> Sostituisci i dati esistenti di questo tipo</label>
     <label class="btn" style="display:block;text-align:center;cursor:pointer">Scegli file CSV<input type="file" accept=".csv,.txt" hidden onchange="importCSV(this.files[0])"></label>
     <h2 class="sec">Backup</h2>
@@ -1282,13 +1446,21 @@ function importCSV(f){
       } else if(kind==='inv'){
         if(!c[0]) return skipped++;
         out.push({n:c[0],lvl:parseInt(c[1])||0,inv:csvNum(c[2]),eff:csvNum(c[3])});
+      } else if(kind==='storico'){
+        // mese come 2026-03, 03/2026 o 01/03/2026
+        const t=String(c[0]||'').trim(); let m=t.match(/^(\d{4})-(\d{1,2})/)||t.match(/^(?:\d{1,2}[\/.-])?(\d{1,2})[\/.-](\d{4})$/);
+        if(!m) return skipped++;
+        const ym = m[1].length===4 ? `${m[1]}-${m[2].padStart(2,'0')}` : `${m[2]}-${m[1].padStart(2,'0')}`;
+        const v = [1,2,3].map(i=>csvNum(c[i])||0);
+        out.push(fotoPatr(ym, today(), 'inserito', GRUPPI.map((k,i)=>({n:k, g:k, v:v[i]}))));
       } else {
         const d=csvDate(c[0]), v=csvNum(c[1]); if(!d||v==null) return skipped++;
         out.push({id:uid(),d,v});
       }
     });
-    const key = {mov:'tx',conti:'conti',rate:'rate',inv:'inv',trading:'trading'}[kind];
-    S[key] = rep ? out : S[key].concat(out);
+    const key = {mov:'tx',conti:'conti',rate:'rate',inv:'inv',trading:'trading',storico:'storico'}[kind];
+    if(key==='storico'){ if(rep) S.storico=[]; out.forEach(putFoto); }
+    else S[key] = rep ? out : S[key].concat(out);
     if(key==='rate') payDueRate();
     save(); closeSheet(); render();
     toast(`Importati ${out.length}${skipped?` · ${skipped} righe saltate`:''}`);
@@ -1495,7 +1667,7 @@ document.addEventListener('visibilitychange', async ()=>{
 window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
 
 // app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
-function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + settleCards())) render(); }
+function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + settleCards() + autoStorico())) render(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
 setInterval(checkRate, 60*60*1000);
 
