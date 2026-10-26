@@ -878,6 +878,7 @@ function afterLoad(){
   S.inv.forEach(r=>{ if(!r.id) r.id = uid(); });
   if(!S.opz.invTipi){ seedInvTipi(); S.opz.invTipi = true; save(); }
   if(!S.opz.invIbks){ unisciIbks(); S.opz.invIbks = true; save(); }
+  if(!S.opz.invGruppi){ invGruppi(); S.opz.invGruppi = true; save(); }
   payDueRate(); payAbbo(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
@@ -1433,9 +1434,9 @@ function saveRata(id){
    S.inv = elenco ordinato {id, n, lvl:0|1|2, inv, eff, agg}: le voci di livello 1 e 2 seguono la voce che le contiene.
    inv/eff vuoti in una voce con sotto-voci = somma delle sotto-voci. I totali usano le voci di livello 0. */
 function invFigli(i){ const r = S.inv[i], out = []; for(let j=i+1; j<S.inv.length && S.inv[j].lvl>r.lvl; j++) if(S.inv[j].lvl===r.lvl+1) out.push(j); return out; }
-function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const f = invFigli(i); return f.length ? round2(sum(f.map(j=>invVal(j,k)||0))) : null; }
+function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const v = invFigli(i).map(j=>invVal(j,k)); return v.some(x=>x!=null) ? round2(sum(v.map(x=>x||0))) : null; }
 // tipologie degli investimenti: un riquadro ciascuna, con il logo della piattaforma sfocato come sfondo
-const INV_TIPI = [['azioni','Azioni','ibkr'],['crypto','Criptovalute','cro'],['p2p','P2P Lending','bondora'],['altro','Altro','crowdcube']];
+const INV_TIPI = [['azioni','Azioni','ibkr'],['crypto','Criptovalute','cro'],['p2p','P2P Lending','bondora'],['altro','Varie','crowdcube']];
 const invTipoAuto = n => /interactive|ibkr|ibks|azion|etf|stock|borsa/i.test(n) ? 'azioni' : /crypto|cripto|bitcoin|btc|ethereum|eth\b|solana/i.test(n) ? 'crypto'
   : /bondora|p2p|lending|mintos|recrowd/i.test(n) ? 'p2p' : 'altro';
 // tipologia di una voce: la sua (voci principali) o quella della voce principale che la contiene
@@ -1451,6 +1452,26 @@ function seedInvTipi(){
 }
 // una volta: IBKS è Interactive Brokers. Se c'è già una voce IBKS, la voce "Interactive Brokers" creata in automatico
 // (vuota, senza sotto-voci) si toglie e il suo valore passa a IBKS
+// fine (esclusa) della voce i con le sue sotto-voci
+function invBlocco(i){ let j = i+1; while(j<S.inv.length && S.inv[j].lvl>S.inv[i].lvl) j++; return j; }
+// una volta: ogni tipologia ha la sua voce principale con le piattaforme dentro
+// (Azioni → IBKS / Interactive Brokers, Varie → Crowdcube), come Criptovalute e P2P Lending
+function invGruppi(){
+  const gruppo = (n, tipo, pos) => { let g = S.inv.find(r=>r.lvl===0 && r.n.toLowerCase()===n.toLowerCase());
+    if(!g){ g = {id:uid(), n, lvl:0, tipo, inv:null, eff:null}; S.inv.splice(pos, 0, g); } else if(!g.tipo) g.tipo = tipo;
+    return g; };
+  const sposta = (re, n, tipo) => {
+    const ids = S.inv.filter(r=>re.test(r.n) && r.n.toLowerCase()!==n.toLowerCase()).map(r=>r.id); if(!ids.length) return;
+    const p0 = S.inv.findIndex(r=>r.id===ids[0]);
+    const g = gruppo(n, tipo, S.inv[p0].lvl===0 ? p0 : S.inv.length);
+    ids.forEach(id=>{ const i = S.inv.findIndex(r=>r.id===id), j = invBlocco(i);
+      if(S.inv.slice(i,j).some(r=>r.lvl-S.inv[i].lvl+1 > 2)) return; // troppi livelli: resta dov'è
+      const blk = S.inv.splice(i, j-i), d = 1 - blk[0].lvl; blk.forEach(r=>r.lvl += d);
+      S.inv.splice(invBlocco(S.inv.indexOf(g)), 0, ...blk); });
+  };
+  sposta(/ibks|interactive|ibkr/i, 'Azioni', 'azioni');
+  sposta(/crowdcube/i, 'Varie', 'altro');
+}
 function unisciIbks(){
   const k = S.inv.findIndex(r=>r.lvl===0 && /ibks/i.test(r.n)); if(k<0) return;
   if(!S.inv[k].tipo) S.inv[k].tipo = 'azioni';
@@ -1470,7 +1491,7 @@ function invTot(k){
 function renderInv(){
   return `<div class="itiles">${INV_TIPI.map(([k,nome,logo])=>{
     const {its, vi, ve, haE, haI} = invTot(k), p = invPct(ve,vi);
-    const nomi = its.map(i=>S.inv[i].n.replace(/^- /,'')).join(', ');
+    const nomi = its.flatMap(i=>{ const f = invFigli(i); return (f.length ? f : [i]).map(j=>S.inv[j].n.replace(/^- /,'')); }).join(', ');
     return `<button class="itile" onclick="openInvTipo('${k}')">
       <span class="itile-clip"><img class="itile-bg" src="${LOGHI[logo]}" alt=""></span><span class="itile-in">
         <span class="itile-h"><img class="logo" src="${LOGHI[logo]}" alt=""><small>${nome}</small></span>
@@ -1507,7 +1528,7 @@ function openInv(id){
   const dec = v => v==null ? '' : String(v).replace('.',',');
   sheet(`<h3>${id?'Modifica investimento':'Nuovo investimento'}</h3>
     <div class="f"><label>Nome</label><input id="iv-n" value="${esc(r.n.replace(/^- /,''))}" placeholder="es. Bitcoin, ETF MSCI World, Bondora"></div>
-    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(r.tipo || (i>=0 ? invTipo(i) : ui.invRiep || 'altro'))===k?'selected':''}>${l}</option>`).join('')}</select>
+    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(i>=0 ? invTipo(i) : ui.invRiep || 'altro')===k?'selected':''}>${l}</option>`).join('')}</select>
       <p class="note" style="margin:4px 0 0">Per le voci dentro un'altra vale la tipologia di quella principale.</p></div>
     <div class="f"><label>Dentro a</label><select id="iv-p" ${haFigli?'disabled':''}>${opz}</select>
       ${haFigli?'<p class="note" style="margin:4px 0 0">Contiene altre voci: per spostarla sposta prima quelle.</p>':''}</div>
