@@ -10,6 +10,9 @@
   document.querySelector('meta[name=theme-color]').content = {scuro:'#1e2629', carta:'#f6f4ef'}[t] || '#e6dccf';
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bilancio">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icona-180.png">
 <title>Bilancio — Finanze personali</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,6 +27,7 @@
   --glass:rgba(246,244,239,.92); --sheet:#ffffff; --overlay:rgba(20,24,22,.35); --track:rgba(0,0,0,.07); --sub-bg:rgba(0,0,0,.02);
   --hero-bg:linear-gradient(160deg,#e3f3ea,#ffffff 65%); --hero-line:#bfe3cf; --hero-ink:#0b7a54; --gate-glow:#dff1e7;
   --solid:var(--panel); --solid2:var(--panel2);
+  --brand-bg:#0f9f6e; --brand-fg:#ffffff; --brand-cl:#0a6347; --brand-dot:#0f9f6e;
   --r:14px;
   --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
 }
@@ -36,6 +40,7 @@
   --neg:#fb7185; --neg-line:#5a3440; --warn:#fbbf24; --blue:#60a5fa;
   --glass:rgba(30,38,41,.92); --sheet:#232d30; --overlay:rgba(0,0,0,.5); --track:rgba(0,0,0,.22); --sub-bg:rgba(255,255,255,.02);
   --hero-bg:linear-gradient(160deg,#2f4d44,#273235 65%); --hero-line:#3f6357; --hero-ink:#a7e9c3; --gate-glow:#2f4d44;
+  --brand-bg:#111a17; --brand-fg:#4ade80; --brand-cl:#0a0f0d; --brand-dot:#4ade80;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Manrope',system-ui,sans-serif;font-size:14px}
@@ -48,8 +53,10 @@ button{font-family:inherit;color:inherit}
   padding:calc(12px + var(--sat)) 16px 10px;border-bottom:1px solid var(--line)}
 .mast-top{display:flex;align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:17px}
-.brand i{width:22px;height:22px;border-radius:7px;background:var(--acc);display:grid;place-items:center}
-.brand i svg{width:13px;height:13px;stroke:var(--on-acc)}
+.brand i{width:24px;height:24px;display:block;flex:none}
+.brand i svg{width:100%;height:100%;display:block}
+/* logo (portafoglio): colori dal tema */
+.b-bg{fill:var(--brand-bg)} .b-fg{fill:var(--brand-fg)} .b-st{stroke:var(--brand-fg)} .b-cl{fill:var(--brand-cl)} .b-dot{fill:var(--brand-dot)}
 .icon-btn{background:none;border:1px solid var(--line);width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink2);cursor:pointer}
 .icon-btn svg{width:17px;height:17px}
 .period{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
@@ -220,8 +227,7 @@ nav button.on{color:var(--acc)}
 .gate.on{display:flex}
 .gate-box{width:100%;max-width:340px;text-align:center}
 .gate-brand{justify-content:center;font-size:24px;margin-bottom:14px}
-.gate-brand i{width:30px;height:30px;border-radius:9px}
-.gate-brand i svg{width:18px;height:18px}
+.gate-brand i{width:34px;height:34px}
 .gate-box .note{margin:0 0 16px}
 .gate-box #g-err{margin:12px 0 0}
 .gate-box input{text-align:center}
@@ -303,6 +309,7 @@ nav button.on{color:var(--acc)}
   --glass:rgba(255,255,255,.42); --sheet:rgba(248,245,240,.80); --overlay:rgba(40,30,20,.25); --track:rgba(255,255,255,.45); --sub-bg:rgba(255,255,255,.25);
   --hero-bg:rgba(255,255,255,.52); --hero-line:rgba(255,255,255,.62); --hero-ink:#4b514d; --gate-glow:transparent;
   --solid:#f4efe8; --solid2:#ebe3d8;
+  --brand-bg:url(#bil-g); --brand-fg:#ffffff; --brand-cl:#0f5a3f; --brand-dot:#2fae7a;
   --r:20px;
   --mesh:radial-gradient(55% 40% at 12% 8%, rgba(255,255,255,.75), transparent 62%),
          radial-gradient(45% 38% at 88% 12%, #c49a74, transparent 70%),
@@ -350,7 +357,7 @@ nav button.on{color:var(--acc)}
 
 <header class="mast">
   <div class="mast-top">
-    <div class="brand"><i><svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg></i><span id="mast-title">Bilancio</span></div>
+    <div class="brand"><i><svg viewBox="68 68 476 476" aria-hidden="true"><defs><linearGradient id="bil-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#46b886"/><stop offset="1" stop-color="#1b7d57"/></linearGradient></defs><path class="b-bg" d="M172.1 68H439.9C497.4 68 544 114.6 544 172.1V439.9C544 497.4 497.4 544 439.9 544H172.1C114.6 544 68 497.4 68 439.9V172.1C68 114.6 114.6 68 172.1 68Z"/><path class="b-fg" d="M203.7 211.2H408.3C431.9 211.2 451 230.3 451 253.9V367.4C451 391 431.9 410.1 408.3 410.1H203.7C180.1 410.1 161 391 161 367.4V253.9C161 230.3 180.1 211.2 203.7 211.2Z"/><path class="b-st" fill="none" stroke-width="26" stroke-linejoin="round" transform="matrix(.929687 0 0 .929687 68 68)" d="M130 154L330 112C335.8 110.8 341.9 112.1 346.8 115.5C351.7 118.9 355 124.1 356 130L360 154"/><path class="b-cl" d="M381.3 278.1H446.4C464.4 278.1 478.9 292.7 478.9 310.6C478.9 328.6 464.4 343.2 446.4 343.2H381.3C363.3 343.2 348.8 328.6 348.8 310.6C348.8 292.7 363.3 278.1 381.3 278.1Z"/><circle class="b-dot" cx="382.2" cy="310.6" r="13"/></svg></i><span id="mast-title">Bilancio</span></div>
     <div style="display:flex;align-items:center;gap:12px">
       <span class="sync" id="sync" onclick="syncTap(this)"></span>
       <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
@@ -1802,7 +1809,7 @@ function closeSheet(){ $('ov').classList.remove('on'); }
 $('ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeSheet(); });
 
 /* ============ ACCESSO: email/password → passphrase → dati ============ */
-const LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="#04130c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg>';
+const LOGO = '<svg viewBox="68 68 476 476" aria-hidden="true"><defs><linearGradient id="bil-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#46b886"/><stop offset="1" stop-color="#1b7d57"/></linearGradient></defs><path class="b-bg" d="M172.1 68H439.9C497.4 68 544 114.6 544 172.1V439.9C544 497.4 497.4 544 439.9 544H172.1C114.6 544 68 497.4 68 439.9V172.1C68 114.6 114.6 68 172.1 68Z"/><path class="b-fg" d="M203.7 211.2H408.3C431.9 211.2 451 230.3 451 253.9V367.4C451 391 431.9 410.1 408.3 410.1H203.7C180.1 410.1 161 391 161 367.4V253.9C161 230.3 180.1 211.2 203.7 211.2Z"/><path class="b-st" fill="none" stroke-width="26" stroke-linejoin="round" transform="matrix(.929687 0 0 .929687 68 68)" d="M130 154L330 112C335.8 110.8 341.9 112.1 346.8 115.5C351.7 118.9 355 124.1 356 130L360 154"/><path class="b-cl" d="M381.3 278.1H446.4C464.4 278.1 478.9 292.7 478.9 310.6C478.9 328.6 464.4 343.2 446.4 343.2H381.3C363.3 343.2 348.8 328.6 348.8 310.6C348.8 292.7 363.3 278.1 381.3 278.1Z"/><circle class="b-dot" cx="382.2" cy="310.6" r="13"/></svg>';
 function setSync(st){
   const el=$('sync'); if(!st){ el.className='sync'; return; }
   el.className='sync on '+st; el.title={ok:'Sincronizzato',saving:'Salvataggio in corso…',err:'Errore di sincronizzazione, riprovo'}[st];
