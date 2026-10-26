@@ -2162,14 +2162,12 @@ const BORDO_FONTI = [ // [chiave, mezzo, cosa]
    in cui è stata attivata. S.opz.bordoImp = {on, dal, pag, pagDal, fatti:[id]}: movimento id 'bf_<chiave>:<id>', con bf/bfAmt/bfD.
    Quelli con data prima di pagDal (il passato, già nei saldi) non toccano i conti; dopo, si pagano con `pag`.
    Cambiati o eliminati nel Giornale si aggiornano qui finché non li modifichi in Bilancio; eliminati qui non tornano (fatti). */
-const BORDO_IMP = (()=>{
-  const rif = x => x.excluded ? null : {d:x.date, amt:x.euro, note:[x.station||x.note||'Rifornimento',
-    x.liters ? x.liters.toFixed(1).replace('.',',')+' L' : x.pricePerLitro ? (x.euro/x.pricePerLitro).toFixed(1).replace('.',',')+' L' : ''].filter(Boolean).join(' · ')};
-  const bollo = m => x => ({d:x.paymentDate||x.scadenza, amt:x.importo, note:`Bollo ${m} · scadenza ${fmtD(x.scadenza)}`});
-  return [['auto_refuels','Benzina Golf',rif], ['scooter_refuels','Benzina SH',rif], ['refuels','Benzina Gommone',rif], ['moto_refuels','Benzina Moto',rif],
-    ['auto_bollo','Bolli',bollo('auto')], ['scooter_bollo','Bolli',bollo('scooter')], ['moto_bollo','Bolli',bollo('moto')], ['carrelloBollo','Bolli',bollo('carrello')]];
-})();
-const BORDO_CHIAVI = [...new Set([...BORDO_FONTI, ...BORDO_IMP].map(x=>x[0]))];
+// [elenco spese del mezzo, sottocategoria della benzina, mezzo del bollo, rifornimenti, bolli]: si importano le spese
+// (dove il Giornale fa i suoi totali e tiene la spunta "da non conteggiare / fatta da altri") di categoria carburante e bollo,
+// anche quelle inserite direttamente da Spese; rifornimenti e bolli collegati danno litri e scadenza
+const BORDO_IMP = [['auto_expenses','Benzina Golf','auto','auto_refuels','auto_bollo'], ['scooter_expenses','Benzina SH','scooter','scooter_refuels','scooter_bollo'],
+  ['moto_expenses','Benzina Moto','moto','moto_refuels','moto_bollo'], ['expenses','Benzina Gommone','carrello','refuels','carrelloBollo']];
+const BORDO_CHIAVI = [...new Set([...BORDO_FONTI.map(x=>x[0]), ...BORDO_IMP.flatMap(x=>[x[0], x[3], x[4]])])];
 const bordo = {stato:'off', voci:[], imp:[], err:'', email:'', agg:0};
 let bordoApp = null, bordoBoxH = '';
 const bordoOn = () => { try{ return localStorage.getItem('bilancio:bordo')==='1'; }catch(e){ return false; } };
@@ -2184,9 +2182,19 @@ function bordoVoci(dati){
   return out.sort((a,b)=>a.d.localeCompare(b.d));
 }
 function bordoImpVoci(dati){
-  const out = [];
-  BORDO_IMP.forEach(([k, sub, map])=>(Array.isArray(dati[k]) ? dati[k] : []).forEach(x=>{
-    const v = x && map(x); if(v && v.d && v.amt>0) out.push({id:`bf_${k}:${x.id||v.d}`, sub, d:v.d, amt:round2(v.amt), note:v.note}); }));
+  const out = [], lista = k => Array.isArray(dati[k]) ? dati[k] : [];
+  BORDO_IMP.forEach(([ek, benzina, mezzo, rk, bk])=>lista(ek).forEach(e=>{
+    if(!e || e.excluded || !e.date || !(e.amount>0)) return;
+    const base = {id:`bf_${ek}:${e.id}`, d:e.date, amt:round2(e.amount)};
+    if(e.category==='carburante'){
+      const r = lista(rk).find(x=>x.expenseId===e.id), l = e.fuelLiters || (r && (r.liters || (r.pricePerLitro ? r.euro/r.pricePerLitro : 0)));
+      const nota = e.note || 'Rifornimento';
+      out.push({...base, old: r ? `bf_${rk}:${r.id}` : null, sub:benzina, note:[nota, l && !/\d L$/.test(nota) ? l.toFixed(1).replace('.',',')+' L' : ''].filter(Boolean).join(' · ')});
+    } else if(e.category==='bollo'){
+      const r = lista(bk).find(x=>x.expenseId===e.id);
+      out.push({...base, old: r ? `bf_${bk}:${r.id}` : null, sub:'Bolli', note:`Bollo ${mezzo}` + (r && r.scadenza ? ` · scadenza ${fmtD(r.scadenza)}` : '')});
+    }
+  }));
   return out;
 }
 // estratto conto della carta già addebitato per il mese della spesa: l'importo non si tocca più
@@ -2195,6 +2203,11 @@ function bordoImporta(){
   if(bordo.stato!=='ok' || !S.carte) return 0;
   if(!S.opz.bordoImp){ S.opz.bordoImp = {on:true, dal:`${now.getFullYear()}-01-01`, pag:'', pagDal:today(), fatti:[]}; save(); }
   const o = S.opz.bordoImp; if(!o.on) return 0;
+  // importati dalla versione che leggeva rifornimenti e bolli: stesso movimento, nuovo id (modifiche ed eliminazioni restano)
+  let rinomina = 0;
+  bordo.imp.forEach(v=>{ if(!v.old) return;
+    const t = S.tx.find(x=>x.id===v.old); if(t && !S.tx.some(x=>x.id===v.id)){ t.id = v.id; rinomina++; }
+    if(o.fatti.includes(v.old)){ o.fatti = o.fatti.map(f=>f===v.old ? v.id : f); rinomina++; } });
   const mio = t => t.amt===t.bfAmt && t.d===t.bfD && !estrattoChiuso(t); // non toccato in Bilancio
   let nuovi = 0, cambi = 0;
   bordo.imp.forEach(v=>{
@@ -2208,8 +2221,10 @@ function bordoImporta(){
   });
   // eliminati (o esclusi) nel Giornale: via anche qui, se non li hai modificati
   const vivi = new Set(bordo.imp.map(v=>v.id)), via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t));
-  via.forEach(t=>applyPag(t,-1)); if(via.length) S.tx = S.tx.filter(t=>!via.includes(t));
-  if(nuovi || cambi || via.length){ save(); if(nuovi) toast(nuovi===1 ? '1 spesa importata dal Giornale di Bordo' : `${nuovi} spese importate dal Giornale di Bordo`); }
+  via.forEach(t=>applyPag(t,-1));
+  // tolte per il Giornale (non da te): se ricompaiono, si importano di nuovo
+  if(via.length){ S.tx = S.tx.filter(t=>!via.includes(t)); o.fatti = o.fatti.filter(id=>!via.some(t=>t.id===id)); }
+  if(nuovi || cambi || via.length || rinomina){ save(); if(nuovi) toast(nuovi===1 ? '1 spesa importata dal Giornale di Bordo' : `${nuovi} spese importate dal Giornale di Bordo`); }
   return nuovi + cambi + via.length;
 }
 // benzina e bolli già registrati a mano (o da Numbers) nello stesso periodo: si conterebbero due volte
