@@ -136,6 +136,20 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 /* lists */
 .acct{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .acct:last-child{border:none}
+/* investimenti: un riquadro per tipologia, logo della piattaforma sfocato come sfondo */
+.itiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.itile{position:relative;overflow:hidden;aspect-ratio:1/1;border-radius:var(--r);border:1px solid var(--line);background:var(--panel);padding:0;text-align:left;cursor:pointer;color:var(--ink);
+  box-shadow:0 8px 24px rgba(0,0,0,.10);transition:transform .15s, box-shadow .15s}
+.itile-bg{position:absolute;inset:-30%;width:160%;height:160%;object-fit:cover;filter:blur(30px) saturate(1.6);opacity:.55;transform:scale(1.1)}
+.itile-in{position:absolute;inset:0;display:flex;flex-direction:column;padding:14px;background:linear-gradient(180deg,var(--panel),transparent 70%);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.itile-h{display:flex;align-items:center;gap:8px}
+.itile-h .logo{width:26px;height:26px;border-radius:8px}
+.itile-h small{font-size:12px;font-weight:700;color:var(--ink2)}
+.itile b{font-size:21px;font-weight:700;margin-top:auto}
+.itile-s{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.itile-f{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--ink2);margin-top:6px;white-space:nowrap}
+.itile.on{box-shadow:0 10px 26px rgba(0,0,0,.16), 0 0 0 2px var(--bg), 0 0 0 4px var(--ink)}
+.itile:active{transform:scale(.98)}
 /* selettore delle carte: come carte di plastica (chip e riflesso) */
 .cardsel{display:flex;align-items:stretch;gap:12px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;padding:5px 5px 8px}
 .cardsel::-webkit-scrollbar{display:none}
@@ -345,6 +359,7 @@ nav button.on{color:var(--acc)}
 
   /* Altro */
   .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .itiles{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
   .rgrid .rate{margin:0}
   .rgrid .empty{grid-column:1/-1}
   .inv-r{grid-template-columns:1fr 110px 110px 70px}
@@ -857,6 +872,7 @@ function afterLoad(){
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
   if(!S.abbo) S.abbo = [];
   S.inv.forEach(r=>{ if(!r.id) r.id = uid(); });
+  if(!S.opz.invTipi){ seedInvTipi(); S.opz.invTipi = true; save(); }
   payDueRate(); payAbbo(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
@@ -1120,9 +1136,10 @@ const LOGHI = {
   bbva:'data:image/webp;base64,UklGRp4FAABXRUJQVlA4IJIFAAAQHACdASpgAGAAPj0cjEQiIaGUDHTkIAPEoAeZn3PzY6v/iODnOF2Y5HfUBtkvMB+wv7M9ib0AP0t6xv0Cv2u9Lr9nvhI/Y39r/aa/+maS9UDni/Mnr5nFvq/94/KHTDP5P/YPyv/kH7R8iRyT+r/4r7Sdcb/JP8fxtEb/+o9HP+3+7T2ofOP/K/tPwB/yf+hf6n+4e1z68f289jEtE5JgdZMDV4ZA/fU6f9ScKvldfuA3RIP2YkHa5yoA9u/OTJujZRONwmiNx2eWg7UKwB2qD9B/RuHUI+RyTIy82lNqm9kNEbIy0wOkgAD+/W7z//+Ehf+Ehf+EhfxDL//0fXe6wkqEybQiAmf6NsbfbvN1nok+5yMr3O38W8aWDNyoOl07OCOjyCCH2ASTZ7S4Ef1xPgCjZodr9YTpbU6MGPPyRRTLLoOEoCsAnppbbnNFDQxb1qkqrMoXc/B3GqTrjEE51FRztLAu8qAbQ3jy3eeJ32Lp0KgOlcCibxliePwIY1/yGnHMhhOTEFJoNWmuVYXvwsTvm7zJvRa0Ve+DgNnNo0kuFy5tTauqgy7fS88Gic+suiL3JpAjOruzLr20t8zNSyV0Lid3xs9dvpAkn4MzIOen0fqXK9RUOejrylAxMC7mpYeBfYN9F6j7rz5/PddKaSm1QLPcjd+KzmuWqR7j7T+gljj4PbF+hQZ8BY6XF62TdLjf86qCB6M1R5LHxxLrI82YXULRmCU7h4P2epPROFTh/IEK/mgu8VgVC4OPXSa03Cnkyjyded95ua2K6rxxJdJI8jzt86bzqCwHJnd/Zn/GBdBNjrTuh9/cnr1RxmOkz3fObunzmxBg80+DmJGQ3cfDpBri4IcAPgLBnDI4x7jERBrq+mpYHTyHyHm3X8Av6m7xgTTrLMrqR4ePH7tL/TGfxbVAwuBP2g0HbqmZRC/+5l63mTDFz3akbPO6ZdaDjlLiNvuiRanPr7EgXfNBCyAa/3VU/O+O5906vdfbX8c/Ikb/U+/hAXzQjZesj8NK8iwsGNdzy0ut+Oepf/7H1rBaeSdtNcfeOhzY9Ci9ntxJPX+Xda3DjdcTs7oLs1VaC5Zxdb0Qxriphvd/5hcPaezK9LsoPmRXEhnJLR41r1fqZqNS/+Nvcr3a2KANm/+fUcIhSu54X/P3v0Qeh2D6luXn2bruxluXLHd8B2cj898/n89JlDXeUP3Dtach6YLjCWB4wlt79daqJOaKTWzeDnG/uFcsqQg/FtYqeM1hgrAZRfxFx+LO2vCSz/+ozHmeq7/zbjrU560FI+PKrcFEJzGa3+fnf/K+DtgW/4oIX/+pu42MGddGMkf//o85NcYx7aC/QGE5V5bHOhF8CI3EaCIDb27EnUn5Ye/O1lFnIPkZu8cKdb+5+RuiSi8ELKB9YgMIqS+qjqHxB+wmNx3+kMOTVu5wf8ctgjlpEz4rLbqfaPwATGwBKQjLskMQ5Cd+WBN15JKn//pQB/+mUaq/h1LjaWr//xa6R+jHsFWiLrZBC0dkn7EzRB70VRPFtlO6475ZkKNCKGjCkLd7GJdYkbU2hmBPuILbPz8zJ15aOdHjoOAkstSzm7PSLeoCBe2lPGI6v5Nxs9Gy9Rg8HtpEFJTVccKmHIai9copXbws1ykRUs/DPyo+qxIFEVRpKP63k4UvV13+05bn7Q50KdSd5oNsqENc3xf4/uQj3c//qTihIw1fDWe2KhWkUXRQxjYApZT+IJxKAAZTUa/+XDTf5qgc3H5FPSdScmvBU+Bsitj3HlUgGy4fNOqD582jS/GmKTfoTfZhNgzD5lWXSdiOxv+J+eYY595H9of7iZ9274CJ+D7dea2dK9sSHQAG2lAaQ9oWdY4i3Y1wQkkKdkb8SjBlomsYCKz/lHmy6QAAAAAA',
   cro:'data:image/webp;base64,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',
   ibkr:'data:image/webp;base64,UklGRpQEAABXRUJQVlA4IIgEAAAQGQCdASpgAGAAPjEYikMiIaEUCq1UIAMEsgBqYu0db/SfNPqT88+/v7dZaxxr/l/yQ/qvaA8wD9Ov759rncO8wH7D9Qv0AP1V6xb0AP1u9LL9kvhD/Z39l/Z+zTbsFshf3I/F8LOVm44EwJUEMM/6X998zv5X/hv+x7g38q/qX/K9Y72Aeh1+rRlxALb5W4XDrn1UZ9MVmItfvS22D+E8/oK9l1+IBRj+Zx3Av/j5fMX4DyqKEarUUCkzaF9GOYdER7WcxGfxNN0/2XYz/Mu5UAD+/rQgcpcXWYMLn/MXAkX+RXjqYiFUFXHdpMx6b8WufS1G0dXfDGjp9KU+RxWcd75ZiU095/+vgs3ZySj460IC0z1Mgbn1NNafODDnnapWBD/sL/rb99H2y3hq/vWPg+1DbB+WxBHOaxBfqmFcgw0ofIGOUtsNn/ttH5Ho/+5j24Ci4g2mLNLveTN9BBrSiqSel+epjukSv9HPn2/R/Myd3ej1H9RlqUl/VdQbW9svC9IVDSsVG4UBOZND2ht5cq1/RJo/u0mljpsGpIj8Qu9zUO+CXAOGHb7tz2jjTd0ZRyRW8APp50S560O6UcqQes//9Sf/I02lVGYQL9Hc7raPHI/+DDfZUr8LfXe0nDOyy8mvHeM+AOORjAgIzFuDhYgx6o8qH8/vT433zc9fX77Xfdf876GfCGxkPmoHekf0UUxs3Skt+i3BMmcLGPNwuKIf//v408sJRQG03hVblbW8hDCmL3EGHnn+Q8KBQeSZxSDBkumOYfqI3HWckjcIx/OXT18/2LIicISPILvRO7uwl0WPB8kldwgbBAyO2pX9wBeSqKjhO2okVKeG0BWd8sf1Dxo9EQ/ks5fMac3jCniPzSqXXrXxD3Uv3cmN6vu4Rh0r4uY6Bf09y+GYhsAsM3mvp31T9/1+aH+Yysh1ZA3CzxyfEe9v1W9t8RXqTk2AXGmcSoC7ag8e9uFPHysApG3SBcCGZZpg3nme1HgZ6f/UECB1E+kPGX/01k5knlbZdS9e2kDxGbic/Y9JuWQqgXLKl2TLaHrjRKZBzNKNp6w4BKDOhzbSZWUOgT3wB9Lcy3+KsLf3OTFZyP9O0GGG0Dqt5g70TebFiL7EYix2RmxJUl087UY186quk25IE1+24cerZ0TqI4cAFMZZ2v4fYoAIujR605giHYughPBkvSMko83hBK4y3BTVlNt9MjV/UnyGjfB6FRI/5vUxAeWYRuZnyNYJgC+WhFq7WRqIK8AGulu+p7D+bvKrde/1bblOTubSh6N0j011fUa1ErNEL6u4WLx2jjYYcRxbGQyssygkl748rZKgbadgfh+OAERQ/P1MMHkOw+duqd0NOtnzJ9kIXtRGMHT0EHvRwrwW+xTu14fDvzPGp75TUgT4HtmAoSEjaO2YP5wlQJd9P/zX0jnr6BqXr7WOdA0Lf8Vpix3x18R5wofvBn1Vrfflkknsprw+S6ppkhhsytTnnEj+pDlACmY/jb+/3RSkovEp2c9QWKTp7ppRYFzYHCuYhDrYnD4sQAAAAA==',
-  bondora:'data:image/webp;base64,UklGRhIEAABXRUJQVlA4IAYEAACQGACdASpgAGAAPjEWiUMiISEWrEQAIAMEsQBqnsbeB/YPxm5tfebuf+3P+A6Gw9nWX9b+yDtU+KT/J+ob5gP1k/S/3lPEA9wD9QOtj9AD9kvS79kT9ifRhzQDr+/pHI9JC/qP+AzkHxAcYTj7iA7XrjTI2f8t6Of+T5QfyX/L/9L3D/5J/TP91/ZeFV/UAqyHWSjboum2IHzG9xKYZb9sBRE/dZQ1SXd+mcJ1HgaB9O1t9laOAG760o6lIbA6w05shbLxEA3VzPscTDQAAP776P//nSvzpX50muf/4rxUvGzgDo3w/9mf7FdafM//bi9IIapwbjFKRghtttcd5u4oaV/+53X8YvkNk0ZRP3Xb/8q/m15/zN/2JBLJoKrY0fw87YgmoJTPvmn7IHvvm5Wy/9oQjUbMg478HM7J/5c21OBMa1NFUT2///nngQZo/2E77Ic/L9dwIn3xvIM83x/pUrRr23shV5b/muozfrInvI02mRVU8qCS+tcKH4FXjdwtK2rTsDHIX0KL//TrAWFo9rbPlJPh5H8/bGX/yK+bXkOLkGV19Hfsp4hiEZAKPZxN81Yu9rmGU+4/IAd7YyvWflId6j1T9cq1uKchepjewqY0k2/E7ixI1pVudeHUYFnESa4MyOT8zoSnM3UQ1UJ0AtX/Esbkv9rRqU/ZrU/MKL4+SvZui3yFAVPjxo2WSg34YoVvf09T4jSwd8iXgFTefBMgEwYBna4H3+ggCfD8KP/gy4leC/D54PMdi5GplZBbgzW+4eJXcwl9JK4v3/0ITKNriT6Hj9tKwLXGar+d+piqVLampqsFJeP0mpK5EMYqbnoMIMf+YF/mJq0W76VL80a0STpsOS2/QCD8Rz+ualZjTtmFA/7KqaJZvBPjoxygU3nKs70ahEdph2j2yeP/HEBU+QCC4bRRqxGnE+FMfuKCM2EP8vGfeGXMurG+A8xTlY3j81FmWMBPkcFT+x/4ARK18bVretZ3/AiDCMC57bzO6dex6cxw7wPh7iv9a+LzP7debhEuLj+UG+OQg8mA+b0qqtoKK6uwvzMP7P47d4o8c01nR5VbIKLu0//5X+tsVBknL7/tWhNXVlx75XHZ6lIp3luoZsD5Dp2JvaiAuvFvxi9kL5XHbBWfZdIYS5WEIgGWlHiqUQLwPZ5qu1sVxPJqdaVsbHhqO2t8WNgCf9IMgUe4JToV26zU+dQb1ip3w1zmVc7G3hCNnqXvKDXWRoDrR8E9gZSfa+W5fejD/kX4C47u08ELYPC3VWrttyocKbBwJx/8H51euKiZ+8mBqLtrUev0BYqaywf4TP526RMxaTS2I+Jrsy2KXbOvj23yJ7wVATgiiaW1VMhcV57/WAAAAAAA'
+  bondora:'data:image/webp;base64,UklGRhIEAABXRUJQVlA4IAYEAACQGACdASpgAGAAPjEWiUMiISEWrEQAIAMEsQBqnsbeB/YPxm5tfebuf+3P+A6Gw9nWX9b+yDtU+KT/J+ob5gP1k/S/3lPEA9wD9QOtj9AD9kvS79kT9ifRhzQDr+/pHI9JC/qP+AzkHxAcYTj7iA7XrjTI2f8t6Of+T5QfyX/L/9L3D/5J/TP91/ZeFV/UAqyHWSjboum2IHzG9xKYZb9sBRE/dZQ1SXd+mcJ1HgaB9O1t9laOAG760o6lIbA6w05shbLxEA3VzPscTDQAAP776P//nSvzpX50muf/4rxUvGzgDo3w/9mf7FdafM//bi9IIapwbjFKRghtttcd5u4oaV/+53X8YvkNk0ZRP3Xb/8q/m15/zN/2JBLJoKrY0fw87YgmoJTPvmn7IHvvm5Wy/9oQjUbMg478HM7J/5c21OBMa1NFUT2///nngQZo/2E77Ic/L9dwIn3xvIM83x/pUrRr23shV5b/muozfrInvI02mRVU8qCS+tcKH4FXjdwtK2rTsDHIX0KL//TrAWFo9rbPlJPh5H8/bGX/yK+bXkOLkGV19Hfsp4hiEZAKPZxN81Yu9rmGU+4/IAd7YyvWflId6j1T9cq1uKchepjewqY0k2/E7ixI1pVudeHUYFnESa4MyOT8zoSnM3UQ1UJ0AtX/Esbkv9rRqU/ZrU/MKL4+SvZui3yFAVPjxo2WSg34YoVvf09T4jSwd8iXgFTefBMgEwYBna4H3+ggCfD8KP/gy4leC/D54PMdi5GplZBbgzW+4eJXcwl9JK4v3/0ITKNriT6Hj9tKwLXGar+d+piqVLampqsFJeP0mpK5EMYqbnoMIMf+YF/mJq0W76VL80a0STpsOS2/QCD8Rz+ualZjTtmFA/7KqaJZvBPjoxygU3nKs70ahEdph2j2yeP/HEBU+QCC4bRRqxGnE+FMfuKCM2EP8vGfeGXMurG+A8xTlY3j81FmWMBPkcFT+x/4ARK18bVretZ3/AiDCMC57bzO6dex6cxw7wPh7iv9a+LzP7debhEuLj+UG+OQg8mA+b0qqtoKK6uwvzMP7P47d4o8c01nR5VbIKLu0//5X+tsVBknL7/tWhNXVlx75XHZ6lIp3luoZsD5Dp2JvaiAuvFvxi9kL5XHbBWfZdIYS5WEIgGWlHiqUQLwPZ5qu1sVxPJqdaVsbHhqO2t8WNgCf9IMgUe4JToV26zU+dQb1ip3w1zmVc7G3hCNnqXvKDXWRoDrR8E9gZSfa+W5fejD/kX4C47u08ELYPC3VWrttyocKbBwJx/8H51euKiZ+8mBqLtrUev0BYqaywf4TP526RMxaTS2I+Jrsy2KXbOvj23yJ7wVATgiiaW1VMhcV57/WAAAAAAA',
+  crowdcube:'data:image/webp;base64,UklGRvgCAABXRUJQVlA4IOwCAACwEACdASpgAGAAPjEUiUKiISEXHfwAIAMEoA1BIguq/u3IF70998Hl0mPER/kv5K/yXuS+YD9Zv0A68n1AP/ZvgHlXeyB5GbRBWwywLhCzbfS3sB7qeYvMpyYi9rj1PMNMxwf7mEiS/OD1gYqEhlyclk2n/SaWRnM8aFS2pvqaYKq4Mvnd333023uNucgAAP792tD+deukC59PoAAOF6ao1NkAxx8Un52qc6NZ+cATQ3/TN2vEPgU0hl9qn4gpSVmKU+sugfMkz5BO5pUtPZASd6vaKQ7/RMbh57AfEi1f9H8Sn4rL6c1Sud3cJokh8vpmrSEjP3NbyIe2rLC/Ze3ArmQ84T82ua6GK7OAcq3dYrFAYsjOhOiUbVFwQ7xT1t0bRJ6Fmnh92UI23virue/HsDmYiYAZJIdLoH8pvpC/HwC93eXPQ5qu1/EoiQx1+fIiaqPZhtS+pfkkXzPhjl0l3VpTOtuHsUej714nuIu6L6/MoxL4l+nZAXiZ+v+TfxBY/JITZkoD2uwV4+J+th9dXmoyWRZLoM3D3Do+s+RD0xAICjujZRl0j/ziumBVi0tJwRhzlAQdCp8pWaCPQtPhmyiVmSeys6s70BpDFPbjXK2Z0MmnSJJvlff6CCozhbhjMImodWX2wGgEgga+2ILBEhBp3/r7nou7JbjwW4+IFW9qKwjkjz9m8KUD24ldzOXDI74Hx+0zjOEBXqnT8TE61MpRIjFSXBVtfGURgntFCZjqNpVOLKVkbZA1iI1JeI+xNlWRWsYiHAnH9avjlub1rL+84YTYaexK2fVM9gGwI01YqeQEPS6M85xIW6EL7l/11rvH/ZTP3FXuhpEIWfYvnXz72b4BWoVhZZvXO4+dwJv3093PfvT1HumQS6QFpdfyI7Mf8pvG/SHJZ1R5Ybtk51vvMYwhcxZlvRCVU0xqmP2+WfD2pTfzk2tn90Fmi816FdaTXdZN//IsHTwHWHms1nreaxMz5qAAAAAA'
 };
-const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i],['cro',/crypto/i],['ibkr',/interactive|ibkr|\bib\b|brokers/i],['bondora',/bondora/i]];
+const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i],['cro',/crypto/i],['ibkr',/interactive|ibkr|\bib\b|brokers/i],['bondora',/bondora/i],['crowdcube',/crowdcube/i]];
 function contoIcon(c){
   const m = LOGO_RE.find(([k,re])=>re.test(c.n));
   return m ? `<img class="logo" src="${LOGHI[m[0]]}" alt="">` : `<i class="logo l">${esc((c.n||'?')[0].toUpperCase())}</i>`;
@@ -1412,20 +1429,49 @@ function saveRata(id){
    inv/eff vuoti in una voce con sotto-voci = somma delle sotto-voci. I totali usano le voci di livello 0. */
 function invFigli(i){ const r = S.inv[i], out = []; for(let j=i+1; j<S.inv.length && S.inv[j].lvl>r.lvl; j++) if(S.inv[j].lvl===r.lvl+1) out.push(j); return out; }
 function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const f = invFigli(i); return f.length ? round2(sum(f.map(j=>invVal(j,k)||0))) : null; }
+// tipologie degli investimenti: un riquadro ciascuna, con il logo della piattaforma sfocato come sfondo
+const INV_TIPI = [['azioni','Azioni','ibkr'],['crypto','Criptovalute','cro'],['p2p','P2P Lending','bondora'],['altro','Altro','crowdcube']];
+const invTipoAuto = n => /interactive|ibkr|azion|etf|stock|borsa/i.test(n) ? 'azioni' : /crypto|cripto|bitcoin|btc|ethereum|eth\b|solana/i.test(n) ? 'crypto'
+  : /bondora|p2p|lending|mintos|recrowd/i.test(n) ? 'p2p' : 'altro';
+// tipologia di una voce: la sua (voci principali) o quella della voce principale che la contiene
+function invTipo(i){ let j=i; while(j>0 && S.inv[j].lvl>0) j--; const r=S.inv[j]; return r.tipo || invTipoAuto(r.n); }
+// una volta: le voci per Azioni (Interactive Brokers) e Altro (Crowdcube) se mancano; il valore attuale dal conto in Patrimonio
+function seedInvTipi(){
+  const top = S.inv.filter(r=>r.lvl===0), conto = re => (S.conti.find(c=>re.test(c.n))||{}).v ?? null;
+  const add = (n, tipo, re) => { if(!S.inv.some(r=>re.test(r.n))){ const v = conto(re); S.inv.push({id:uid(), n, lvl:0, tipo, inv:null, eff:v, agg:v!=null?today():undefined}); } };
+  if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='azioni')) add('Interactive Brokers','azioni',/interactive|ibkr/i);
+  if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='crypto')) add('Crypto.com','crypto',/crypto/i);
+  if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='p2p')) add('Bondora','p2p',/bondora/i);
+  add('Crowdcube','altro',/crowdcube/i);
+}
 function renderInv(){
-  const idx = S.inv.map((r,i)=>i), top = idx.filter(i=>S.inv[i].lvl===0);
+  const all = S.inv.map((r,i)=>i), top = all.filter(i=>S.inv[i].lvl===0);
   const ti = sum(top.map(i=>invVal(i,'inv')||0)), te = sum(top.map(i=>invVal(i,'eff')||0));
+  const pct = (e,v) => v>0 && e!=null ? (e-v)/v*100 : null;
+  const tiles = INV_TIPI.map(([k,nome,logo])=>{
+    const its = top.filter(i=>invTipo(i)===k), vi = sum(its.map(i=>invVal(i,'inv')||0)), ve = sum(its.map(i=>invVal(i,'eff')||0)), p = pct(ve,vi);
+    const haE = its.some(i=>invVal(i,'eff')!=null), haI = its.some(i=>invVal(i,'inv'));
+    const nomi = its.map(i=>S.inv[i].n.replace(/^- /,'')).join(', ');
+    return `<button class="itile ${ui.invTipo===k?'on':''}" onclick="ui.invTipo=ui.invTipo==='${k}'?'':'${k}';render()">
+      <img class="itile-bg" src="${LOGHI[logo]}" alt=""><span class="itile-in">
+        <span class="itile-h"><img class="logo" src="${LOGHI[logo]}" alt=""><small>${nome}</small></span>
+        <b class="mono">${haE ? eurI(ve) : '–'}</b>
+        <small class="itile-s">${its.length ? esc(nomi) : 'nessuna voce'}</small>
+        <span class="itile-f"><span class="mono">inv. ${haI ? eurI(vi) : '–'}</span>${p!=null?`<span class="mono ${p>=0?'pos':'neg'}">${p>=0?'+':''}${p.toFixed(1).replace('.',',')}%</span>`:''}</span>
+      </span></button>`; }).join('');
+  const sel = ui.invTipo, idx = sel ? all.filter(i=>invTipo(i)===sel) : all;
   const righe = idx.map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = r.inv==null && r.eff==null && invFigli(i).length;
     const p = vi>0 && ve!=null ? (ve-vi)/vi*100 : null;
     return `<div class="inv-r" onclick="openInv('${r.id}')" style="cursor:pointer"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}${r.agg?`<small class="mut" style="display:block;font-size:10.5px;font-weight:500">agg. ${fmtD(r.agg)}</small>`:auto?'<small class="mut" style="display:block;font-size:10.5px;font-weight:500">somma delle voci</small>':''}</div>
       <div class="mono">${vi?eurI(vi):'–'}</div><div class="mono">${ve!=null?eurI(ve):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('');
   return `<button class="btn" style="margin-bottom:12px" onclick="openInv()">+ Nuovo investimento</button>
+    <div class="itiles">${tiles}</div>
     <div class="grid2"><div class="card kpi"><small>Investito</small><b class="mono">${eur(ti,0)}</b></div><div class="card kpi"><small>Valore attuale</small><b class="mono">${eur(te,0)}</b></div></div>
     <div class="card kpi" style="margin-top:10px"><small>Rendimento totale</small><b class="mono ${te>=ti?'pos':'neg'}">${te>=ti?'+':''}${((te-ti)/(ti||1)*100).toFixed(1).replace('.',',')}%  ·  ${te>=ti?'+':''}${eur(te-ti,0)}</b></div>
-    <h2 class="sec">Dettaglio</h2><div class="card" style="padding:4px 12px">
+    <h2 class="sec">Dettaglio${sel?' · '+INV_TIPI.find(t=>t[0]===sel)[1]+` <button class="btn sm ghost" style="margin-left:6px" onclick="ui.invTipo='';render()">Mostra tutti</button>`:''}</h2><div class="card" style="padding:4px 12px">
       <div class="inv-r h"><div>Voce</div><div>Inv.</div><div>Attuale</div><div>%</div></div>
       ${righe || '<div class="empty">Nessun investimento. Tocca "+ Nuovo investimento".</div>'}</div>
-    <p class="note" style="margin-top:10px">Tocca una voce per modificarla. Il rendimento % è calcolato da investito e valore attuale.</p>`;
+    <p class="note" style="margin-top:10px">Tocca un riquadro per vedere solo quella tipologia, una voce per modificarla. Il rendimento % è calcolato da investito e valore attuale.</p>`;
 }
 function openInv(id){
   const i = id ? S.inv.findIndex(x=>x.id===id) : -1, r = i>=0 ? S.inv[i] : {n:'', lvl:0, inv:null, eff:null};
@@ -1436,6 +1482,8 @@ function openInv(id){
   const dec = v => v==null ? '' : String(v).replace('.',',');
   sheet(`<h3>${id?'Modifica investimento':'Nuovo investimento'}</h3>
     <div class="f"><label>Nome</label><input id="iv-n" value="${esc(r.n.replace(/^- /,''))}" placeholder="es. Bitcoin, ETF MSCI World, Bondora"></div>
+    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(r.tipo || (i>=0 ? invTipo(i) : ui.invTipo || 'altro'))===k?'selected':''}>${l}</option>`).join('')}</select>
+      <p class="note" style="margin:4px 0 0">Per le voci dentro un'altra vale la tipologia di quella principale.</p></div>
     <div class="f"><label>Dentro a</label><select id="iv-p" ${haFigli?'disabled':''}>${opz}</select>
       ${haFigli?'<p class="note" style="margin:4px 0 0">Contiene altre voci: per spostarla sposta prima quelle.</p>':''}</div>
     <div class="grid2">
@@ -1453,7 +1501,7 @@ function saveInv(id){
   let i = id ? S.inv.findIndex(x=>x.id===id) : -1;
   const r = i>=0 ? S.inv[i] : {id:uid()};
   if(eff!=null && r.eff!==eff) r.agg = today(); // data dell'ultimo aggiornamento del valore
-  Object.assign(r, {n, inv, eff});
+  Object.assign(r, {n, inv, eff, tipo:$('iv-t').value});
   const pid = $('iv-p').value, moveable = !$('iv-p').disabled;
   if(moveable){
     if(i>=0) S.inv.splice(i,1);

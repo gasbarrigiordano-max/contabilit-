@@ -71,6 +71,7 @@ Su iPhone la barra in basso (pillola di vetro) ha, in ordine: **Panoramica · Mo
 - `opz`: impostazioni/flag (`contiBase`: conti ING, BBVA, N26, Buddy Bank, Wise creati una volta se mancavano; `storicoDal`: primo mese seguito dallo storico automatico)
 - `storico`: una foto del patrimonio per mese `{m, d, tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}`; tipo `fine` (ultimo giorno del mese, aggiornata a ogni controllo di quel giorno), `tardi` (prima apertura dopo, saldi riportati a fine mese togliendo i movimenti registrati dall'app nel frattempo), `ora` (salvata a mano, poi sostituita da quella di fine mese), `inserito` (mese passato a mano o da CSV, mai sovrascritto)
 - `abbo`: abbonamenti `{id, n, costo, freq (1/2/3/6/12 mesi), next, pag, cat, attivo}`; alla scadenza diventano un'uscita `cat › nome` pagata con `pag` (stessi valori del campo "Pagato con") e `next` avanza di `freq` mesi; id movimento `ab_<id>_<data>`
+- Investimenti: le voci principali hanno `tipo` ('azioni' | 'crypto' | 'p2p' | 'altro', dedotto dal nome se manca); la pagina mostra un riquadro per tipologia (Azioni/IBKR, Criptovalute/Crypto.com, P2P Lending/Bondora, Altro/Crowdcube) con totale, investito e rendimento, logo sfocato come sfondo; tocco = filtra il dettaglio. Voci IBKR e Crowdcube create una volta (`opz.invTipi`).
 - `servizi`: elenco dei servizi delle rate (PayPal, Klarna, Scalapay, Findomestic, Compass…), modificabile.
 - `trading`: `{id, d, v}`
 
