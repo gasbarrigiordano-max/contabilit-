@@ -139,7 +139,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 /* selettore delle carte: come carte di plastica (chip e riflesso) */
 .cardsel{display:flex;gap:10px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;padding:4px 2px 6px}
 .cardsel::-webkit-scrollbar{display:none}
-.pcard{flex:1 0 140px;position:relative;height:74px;border-radius:13px;border:none;padding:10px 12px;text-align:left;cursor:pointer;overflow:hidden;
+.pcard{flex:1 1 0;min-width:128px;max-width:220px;aspect-ratio:1.586;position:relative;border-radius:9px;border:none;padding:10px 12px;text-align:left;cursor:pointer;overflow:hidden;
   box-shadow:0 6px 16px rgba(0,0,0,.16), inset 0 0 0 1px rgba(255,255,255,.18);transform:scale(.96);opacity:.72;transition:transform .2s, opacity .2s}
 .pcard span{position:relative;z-index:1;font-weight:800;font-size:13.5px;letter-spacing:.01em}
 .pcard i{position:absolute;left:12px;bottom:11px;width:24px;height:18px;border-radius:4px;background:linear-gradient(135deg,#f7e9b8,#c8a24a 55%,#e8d38b);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
@@ -151,7 +151,10 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .pcard.nero{background:linear-gradient(135deg,#121212,#3b3b3b 60%,#1a1a1a);color:#fff}
 .pcard.argento{background:linear-gradient(135deg,#aeb4bb,#f1f3f5 45%,#c2c7cd);color:#1d2022}
 .pcard.verde{background:linear-gradient(135deg,#0a4d37,#1f9d6b 60%,#0d6a4a);color:#fff}
-.pcard-add{flex:0 0 56px;height:74px;align-self:center;border-radius:13px;border:1.5px dashed var(--ink3);background:none;color:var(--ink2);font-size:22px;cursor:pointer;transform:scale(.96)}
+.pcard.foto{background-size:cover;background-position:center}
+.pcard.foto span,.pcard.foto i{display:none}
+.pcard.foto::after{background:linear-gradient(115deg,rgba(255,255,255,.18),rgba(255,255,255,0) 40%)}
+.pcard-add{flex:0 0 52px;align-self:stretch;border-radius:9px;border:1.5px dashed var(--ink3);background:none;color:var(--ink2);font-size:22px;cursor:pointer;transform:scale(.96)}
 .ord{display:flex;align-items:center;gap:6px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .ord span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ord.sub{padding-left:20px;font-size:13px;color:var(--ink2);cursor:default;background:var(--sub-bg)}
@@ -1454,13 +1457,16 @@ function delAbbo(id){
 }
 
 /* ---- Carte di credito: pagina ---- */
-const COLORI_CARTA = [['oro','Oro'],['blu','Blu scuro'],['nero','Nero'],['argento','Argento'],['verde','Verde']];
-const cartaColore = c => c.colore || (/oro|gold/i.test(c.n) ? 'oro' : /bbva/i.test(c.n) ? 'blu' : 'nero');
+// aspetto della carta nel selettore: foto della carta vera (file accanto a index.html) o un colore
+const COLORI_CARTA = [['ing-oro','Foto ING Gold'],['bbva','Foto BBVA Credit'],['oro','Oro'],['blu','Blu scuro'],['nero','Nero'],['argento','Argento'],['verde','Verde']];
+const FOTO_CARTA = {'ing-oro':'carta-ing-oro.webp', 'bbva':'carta-bbva.webp'};
+const cartaColore = c => c.colore || (/\bing\b/i.test(c.n) && /oro|gold/i.test(c.n) ? 'ing-oro' : /bbva/i.test(c.n) ? 'bbva' : 'nero');
 function renderCarte(){
   const cs = carte();
   if(!cs.find(c=>c.id===ui.carta)) ui.carta = (cs[0]||{}).id || '';
   const c = cs.find(x=>x.id===ui.carta);
-  const seg = `<div class="cardsel">${cs.map(x=>`<button class="pcard ${cartaColore(x)} ${x.id===ui.carta?'on':''}" onclick="ui.carta='${x.id}';render()"><span>${esc(x.n)}</span><i></i></button>`).join('')}<button class="pcard-add" onclick="openCarta()" title="Nuova carta">+</button></div>`;
+  const seg = `<div class="cardsel">${cs.map(x=>{ const col = cartaColore(x), foto = FOTO_CARTA[col];
+    return `<button class="pcard ${foto?'foto':col} ${x.id===ui.carta?'on':''}" ${foto?`style="background-image:url(${foto})"`:''} aria-label="${esc(x.n)}" onclick="ui.carta='${x.id}';render()"><span>${esc(x.n)}</span><i></i></button>`; }).join('')}<button class="pcard-add" onclick="openCarta()" title="Nuova carta">+</button></div>`;
   if(!c) return seg + '<div class="empty">Nessuna carta. Tocca + per aggiungerla.</div>';
   const usato = plafondUsato(c), disp = round2(c.plafond - usato), aperti = cicliAperti(c);
   const resPF = round2(sum((c.flex||[]).map(pfResiduo)));

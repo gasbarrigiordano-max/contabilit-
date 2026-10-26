@@ -45,7 +45,7 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 - Sezione Abbonamenti (in Altro su iPhone, voce nel menu su iPad/Mac): SIM, palestra, Apple Music, iCloud, Claude… con costo, ricorrenza (mensile, bimestrale, trimestrale, semestrale, annuale), prossima scadenza, metodo di pagamento e categoria (predefinita Ricorrenti). Costo totale al mese e all'anno; si possono sospendere.
 
 ### Carte di credito
-- Selettore delle carte come carte di plastica (`colore`: oro, blu, nero, argento, verde; predefinito ING Oro → oro, BBVA → blu).
+- Selettore delle carte con la foto della carta vera (`carta-ing-oro.webp`, `carta-bbva.webp`) o un colore (`colore`: ing-oro, bbva, oro, blu, nero, argento, verde).
 - Sezione Carte (in Altro su iPhone, voce nel menu su iPad/Mac), una scheda per carta: ING Oro (plafond 1.500 €, addebito il 10 del mese dopo su ING, PagoFlex attivo) e BBVA (1.000 €, addebito a fine mese). Tutto modificabile, si possono aggiungere carte.
 - Spese registrate con "+ Spesa con …" (o "Pagato con" nel movimento): sono uscite normali alla loro data; il giorno dell'addebito il totale del mese (spese + rate PagoFlex) viene tolto dal conto della carta.
 - **Disponibile = plafond − spese non ancora addebitate − capitale PagoFlex ancora da restituire.**
