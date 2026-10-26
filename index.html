@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#f6f4ef">
 <script>
-  let t = 'carta'; try{ t = localStorage.getItem('bilancio:tema') || 'carta'; }catch(e){}
+  let t = 'vetro'; try{ t = localStorage.getItem('bilancio:tema') || 'vetro'; }catch(e){}
   document.documentElement.dataset.theme = t;
-  if(t==='scuro') document.querySelector('meta[name=theme-color]').content = '#1e2629';
+  document.querySelector('meta[name=theme-color]').content = {scuro:'#1e2629', carta:'#f6f4ef'}[t] || '#e6dccf';
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Bilancio — Finanze personali</title>
@@ -23,6 +23,7 @@
   --neg:#d9304f; --neg-line:#f1c3cc; --warn:#c97a06; --blue:#2a78d6;
   --glass:rgba(246,244,239,.92); --sheet:#ffffff; --overlay:rgba(20,24,22,.35); --track:rgba(0,0,0,.07); --sub-bg:rgba(0,0,0,.02);
   --hero-bg:linear-gradient(160deg,#e3f3ea,#ffffff 65%); --hero-line:#bfe3cf; --hero-ink:#0b7a54; --gate-glow:#dff1e7;
+  --solid:var(--panel); --solid2:var(--panel2);
   --r:14px;
   --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
 }
@@ -43,7 +44,7 @@ body{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(150px + 
 button{font-family:inherit;color:inherit}
 
 /* masthead */
-.mast{position:sticky;top:0;z-index:20;background:var(--glass);backdrop-filter:blur(12px);
+.mast{position:sticky;top:0;z-index:20;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   padding:calc(12px + var(--sat)) 16px 10px;border-bottom:1px solid var(--line)}
 .mast-top{display:flex;align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:17px}
@@ -113,15 +114,15 @@ input:focus,select:focus{border-color:var(--acc)}
 .mx-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);max-height:68vh}
 table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-content}
 .mx th,.mx td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
-.mx th{position:sticky;top:0;background:var(--panel2);color:var(--ink3);font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;z-index:2}
-.mx td:first-child,.mx th:first-child{position:sticky;left:0;text-align:left;background:var(--panel);z-index:1;min-width:128px;max-width:150px;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--line)}
-.mx th:first-child{background:var(--panel2);z-index:3}
-.mx tr.grp td{background:var(--panel2);font-weight:700}
-.mx tr.grp td:first-child{background:var(--panel2)}
+.mx th{position:sticky;top:0;background:var(--solid2);color:var(--ink3);font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;z-index:2}
+.mx td:first-child,.mx th:first-child{position:sticky;left:0;text-align:left;background:var(--solid);z-index:1;min-width:128px;max-width:150px;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--line)}
+.mx th:first-child{background:var(--solid2);z-index:3}
+.mx tr.grp td{background:var(--solid2);font-weight:700}
+.mx tr.grp td:first-child{background:var(--solid2)}
 .mx tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
 .mx td.z{color:var(--ink3)}
 .mx tr.tot td{font-weight:800;border-top:2px solid var(--line)}
-.mx td.t{font-weight:700;background:var(--panel2)}
+.mx td.t{font-weight:700;background:var(--solid2)}
 
 /* lists */
 .acct{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
@@ -194,7 +195,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 
 /* bottom nav */
 nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:30;
-  background:var(--glass);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   display:flex;padding:7px 6px calc(7px + var(--sab))}
 nav button{flex:1;background:none;border:none;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:5px 0;cursor:pointer}
 nav button svg{width:21px;height:21px}
@@ -290,6 +291,58 @@ nav button.on{color:var(--acc)}
   .rgrid .rate{margin:0}
   .rgrid .empty{grid-column:1/-1}
   .inv-r{grid-template-columns:1fr 110px 110px 70px}
+}
+
+/* ===== tema Vetro (stile Apple): sfondo sfumato caldo, schede di vetro smerigliato ===== */
+:root[data-theme="vetro"]{
+  color-scheme:light;
+  --bg:#e6dccf; --panel:rgba(255,255,255,.52); --panel2:rgba(255,255,255,.34); --line:rgba(255,255,255,.62);
+  --ink:#1b1e1c; --ink2:#4b514d; --ink3:#7b807b;
+  --acc:#1f9d6b; --acc-dim:rgba(31,157,107,.14); --on-acc:#ffffff; --acc-shadow:rgba(20,30,25,.25);
+  --neg:#d33c55; --neg-line:rgba(211,60,85,.35); --warn:#b97206; --blue:#2a78d6;
+  --glass:rgba(255,255,255,.42); --sheet:rgba(248,245,240,.80); --overlay:rgba(40,30,20,.25); --track:rgba(255,255,255,.45); --sub-bg:rgba(255,255,255,.25);
+  --hero-bg:rgba(255,255,255,.52); --hero-line:rgba(255,255,255,.62); --hero-ink:#4b514d; --gate-glow:transparent;
+  --solid:#f4efe8; --solid2:#ebe3d8;
+  --r:20px;
+  --mesh:radial-gradient(55% 40% at 12% 8%, rgba(255,255,255,.75), transparent 62%),
+         radial-gradient(45% 38% at 88% 12%, #c49a74, transparent 70%),
+         radial-gradient(50% 45% at 85% 78%, #93bba2, transparent 70%),
+         radial-gradient(55% 50% at 8% 88%, #b4875f, transparent 70%),
+         radial-gradient(35% 30% at 50% 50%, rgba(255,250,240,.6), transparent 70%),
+         linear-gradient(165deg,#efe7dc,#dccab6 55%,#cbb59b);
+}
+:root[data-theme="vetro"] body{background:transparent}
+:root[data-theme="vetro"] body::before{content:'';position:fixed;inset:0;z-index:-1;background:var(--mesh)}
+:root[data-theme="vetro"] .gate{background:var(--mesh)}
+:root[data-theme="vetro"] .card,
+:root[data-theme="vetro"] .seg,
+:root[data-theme="vetro"] .sheet,
+:root[data-theme="vetro"] .mx-wrap,
+:root[data-theme="vetro"] .ptip{-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);box-shadow:0 10px 30px rgba(70,45,20,.10), inset 0 1px 0 rgba(255,255,255,.7)}
+:root[data-theme="vetro"] .tx{background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.7);border-radius:16px}
+:root[data-theme="vetro"] .mast{border-bottom-color:rgba(255,255,255,.5)}
+:root[data-theme="vetro"] nav{border-top-color:rgba(255,255,255,.6);background:rgba(246,241,234,.72);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%)}
+:root[data-theme="vetro"] .mast{background:rgba(246,241,234,.6);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%)}
+:root[data-theme="vetro"] input,:root[data-theme="vetro"] select,:root[data-theme="vetro"] textarea{background:rgba(255,255,255,.65);border-color:rgba(255,255,255,.8)}
+:root[data-theme="vetro"] .seg button.on{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+/* pulsanti a pillola neri e bianchi */
+:root[data-theme="vetro"] .btn{background:#1c1e1d;color:#fff;border-radius:99px}
+:root[data-theme="vetro"] .btn.ghost{background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.85);color:var(--ink)}
+:root[data-theme="vetro"] .btn.danger{background:rgba(255,255,255,.5);border:1px solid var(--neg-line);color:var(--neg)}
+:root[data-theme="vetro"] .chip{background:rgba(255,255,255,.45);border-color:rgba(255,255,255,.7);color:var(--ink2)}
+:root[data-theme="vetro"] .chip.on{background:#1c1e1d;border-color:#1c1e1d;color:#fff}
+:root[data-theme="vetro"] .fab{background:#1c1e1d;color:#fff;border-radius:50%}
+:root[data-theme="vetro"] .toast{background:#1c1e1d;color:#fff}
+:root[data-theme="vetro"] .icon-btn{background:rgba(255,255,255,.5);border-color:rgba(255,255,255,.7)}
+/* il saldo in Panoramica: vetro verde, come "Total Earnings" */
+:root[data-theme="vetro"] .hero.sq{background:linear-gradient(150deg,rgba(64,178,128,.92),rgba(28,128,90,.88));border-color:rgba(255,255,255,.35);color:#fff}
+:root[data-theme="vetro"] .hero.sq small{color:rgba(255,255,255,.82)}
+:root[data-theme="vetro"] .hero.sq b{color:#fff}
+:root[data-theme="vetro"] .hero.sq .pos{color:#d3f8e6}
+:root[data-theme="vetro"] .hero.sq .neg{color:#ffd9e0}
+@media (min-width:900px){
+  :root[data-theme="vetro"] nav{background:rgba(255,255,255,.38);border-right-color:rgba(255,255,255,.6)}
+  :root[data-theme="vetro"] nav button.on{background:rgba(255,255,255,.75);color:var(--ink)}
 }
 </style>
 </head>
@@ -462,13 +515,14 @@ const PAL_TEMA = {
   scuro: ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'],
   carta: ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948']
 };
-const tema = () => document.documentElement.dataset.theme==='scuro' ? 'scuro' : 'carta';
+PAL_TEMA.vetro = PAL_TEMA.carta;
+const tema = () => ({scuro:'scuro', carta:'carta'})[document.documentElement.dataset.theme] || 'vetro';
 let PAL = PAL_TEMA[tema()];
 function setTema(t){
   document.documentElement.dataset.theme = t;
   try{ localStorage.setItem('bilancio:tema', t); }catch(e){}
   PAL = PAL_TEMA[t];
-  document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name=theme-color]').content = {scuro:'#1e2629', carta:'#f6f4ef'}[t] || '#e6dccf';
   render(); openSettings();
 }
 
@@ -1651,7 +1705,7 @@ function openSettings(){
     : `<p class="note">I dati restano solo in questo browser. Configura Firebase (vedi HANDOFF.md) per sincronizzarli cifrati.</p>`;
   sheet(`<h3>Impostazioni</h3>
     <h2 class="sec" style="margin-top:4px">Tema</h2>
-    <div class="seg" style="margin-bottom:6px">${[['carta','Carta (chiaro)'],['scuro','Ardesia (scuro)']].map(([v,l])=>`<button class="${tema()===v?'on':''}" onclick="setTema('${v}')">${l}</button>`).join('')}</div>
+    <div class="seg" style="margin-bottom:6px">${[['vetro','Vetro'],['carta','Carta'],['scuro','Ardesia']].map(([v,l])=>`<button class="${tema()===v?'on':''}" onclick="setTema('${v}')">${l}</button>`).join('')}</div>
     <p class="note" style="margin:0 0 4px">Il tema vale per questo dispositivo.</p>
     <h2 class="sec">Dati e backup</h2>
     ${acct}
