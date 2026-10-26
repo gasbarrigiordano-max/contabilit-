@@ -1111,10 +1111,28 @@ function renderMx(){
     <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. Tocca una cella per vedere, modificare o aggiungere i movimenti; + per una nuova ${tipo==='u'?'uscita':'entrata'}. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
 }
 let mxRighe = [];
+// movimenti di una riga del Mensile: nel mese m (o nell'anno con m<0), o in tutti gli anni
+function mxMov(r, m, tutti){
+  const {cat, sub} = mxRighe[r], tipo = ui.mxTipo;
+  return S.tx.filter(t=>t.t===tipo && t.cat===cat && (sub==null || (t.sub||'—')===sub) && (tutti || (txYear(t)===ui.year && (m<0 || txMonth(t)===m))));
+}
+// collegati a rate o rateizzazioni della carta: si eliminano dalla loro sezione, non in blocco
+const mxBloccato = t => t.rid || t.pf || t.rata || t.int;
+function mxElimina(r, m, tutti){
+  const {cat, sub} = mxRighe[r], list = mxMov(r, m, tutti).filter(t=>!mxBloccato(t)), salt = mxMov(r, m, tutti).length - list.length;
+  if(!list.length) return;
+  const nome = cat + (sub && sub!=='—' ? ' › '+sub : ''), dove = tutti ? 'in tutti gli anni' : m<0 ? 'nel '+ui.year : `a ${MESI[m].toLowerCase()} ${ui.year}`;
+  if(!confirm(`Eliminare ${list.length} ${list.length===1?'movimento':'movimenti'} di "${nome}" ${dove}, per un totale di ${eur(sum(list.map(t=>t.amt)))}?\n\nNon si può annullare: se vuoi tenerne una copia, esporta prima un backup da Impostazioni.`)) return;
+  const ids = new Set(list.map(t=>t.id));
+  list.forEach(t=>applyPag(t, -1)); // come l'eliminazione singola: l'importo torna sul conto
+  S.tx = S.tx.filter(t=>!ids.has(t.id));
+  save(); closeSheet(); render();
+  toast(`${list.length} movimenti eliminati` + (salt ? ` · ${salt} collegati a rate lasciati` : ''));
+}
 function mxCella(r, m){
   const {cat, sub} = mxRighe[r], tipo = ui.mxTipo;
-  const list = S.tx.filter(t=>t.t===tipo && t.cat===cat && (sub==null || (t.sub||'—')===sub) && txYear(t)===ui.year && (m<0 || txMonth(t)===m))
-    .sort((a,b)=>b.d.localeCompare(a.d));
+  const list = mxMov(r, m, false).sort((a,b)=>b.d.localeCompare(a.d));
+  const nDel = list.filter(t=>!mxBloccato(t)).length, nTutti = mxMov(r, m, true).filter(t=>!mxBloccato(t)).length;
   const oggi = today(), d = m<0 ? (ui.year===now.getFullYear() ? oggi : `${ui.year}-01-01`)
     : (ui.year===now.getFullYear() && m===now.getMonth() ? oggi : `${ui.year}-${String(m+1).padStart(2,'0')}-01`);
   const pre = JSON.stringify({t:tipo, cat, sub: sub && sub!=='—' ? sub : '', d}).replace(/"/g,'&quot;');
@@ -1122,7 +1140,9 @@ function mxCella(r, m){
     <p class="note" style="margin:-6px 0 12px">${tipo==='u'?'Uscite':'Entrate'} · ${m<0 ? ui.year : MESI[m]+' '+ui.year} · <b class="mono" style="color:var(--ink)">${eur(sum(list.map(t=>t.amt)))}</b></p>
     ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)].filter(Boolean).join(' · '))}</small></div>
       <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`).join('') || '<div class="empty">Nessun movimento.</div>'}
-    <button class="btn" style="margin-top:12px" onclick="openTx('', '', ${pre})">+ Aggiungi ${tipo==='u'?'uscita':'entrata'}</button>`);
+    <button class="btn" style="margin-top:12px" onclick="openTx('', '', ${pre})">+ Aggiungi ${tipo==='u'?'uscita':'entrata'}</button>
+    ${nDel ? `<button class="btn danger" style="margin-top:8px" onclick="mxElimina(${r},${m},false)">Elimina ${nDel===1?'questo movimento':'questi '+nDel+' movimenti'}</button>` : ''}
+    ${nTutti > nDel ? `<button class="btn danger" style="margin-top:8px" onclick="mxElimina(${r},${m},true)">Elimina in tutti gli anni (${nTutti})</button>` : ''}`);
 }
 
 /* ---- Ordine personalizzato delle categorie (Mensile) ----
