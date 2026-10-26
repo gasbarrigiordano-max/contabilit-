@@ -140,15 +140,17 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .itiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .itile{position:relative;overflow:hidden;aspect-ratio:1/1;border-radius:var(--r);border:1px solid var(--line);background:var(--panel);padding:0;text-align:left;cursor:pointer;color:var(--ink);
   box-shadow:0 8px 24px rgba(0,0,0,.10);transition:transform .15s, box-shadow .15s}
-.itile-bg{position:absolute;inset:-30%;width:160%;height:160%;object-fit:cover;filter:blur(30px) saturate(1.6);opacity:.55;transform:scale(1.1)}
-.itile-in{position:absolute;inset:0;display:flex;flex-direction:column;padding:14px;background:linear-gradient(180deg,var(--panel),transparent 70%);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.itile-bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(12px) saturate(1.4);opacity:.8}
+.itile-in{position:absolute;inset:0;display:flex;flex-direction:column;padding:14px;background:linear-gradient(180deg,var(--panel) 0%,transparent 45%,transparent 55%,var(--panel) 100%)}
 .itile-h{display:flex;align-items:center;gap:8px}
 .itile-h .logo{width:26px;height:26px;border-radius:8px}
 .itile-h small{font-size:12px;font-weight:700;color:var(--ink2)}
 .itile b{font-size:21px;font-weight:700;margin-top:auto}
 .itile-s{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .itile-f{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--ink2);margin-top:6px;white-space:nowrap}
-.itile.on{box-shadow:0 10px 26px rgba(0,0,0,.16), 0 0 0 2px var(--bg), 0 0 0 4px var(--ink)}
+:root[data-theme="scuro"] .itile-bg{opacity:.5}
+.iriep-h{display:flex;align-items:center;gap:10px}
+.iriep-h .logo{width:30px;height:30px;border-radius:9px}
 .itile:active{transform:scale(.98)}
 /* selettore delle carte: come carte di plastica (chip e riflesso) */
 .cardsel{display:flex;align-items:stretch;gap:12px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;padding:5px 5px 8px}
@@ -873,6 +875,7 @@ function afterLoad(){
   if(!S.abbo) S.abbo = [];
   S.inv.forEach(r=>{ if(!r.id) r.id = uid(); });
   if(!S.opz.invTipi){ seedInvTipi(); S.opz.invTipi = true; save(); }
+  if(!S.opz.invIbks){ unisciIbks(); S.opz.invIbks = true; save(); }
   payDueRate(); payAbbo(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
@@ -1139,7 +1142,7 @@ const LOGHI = {
   bondora:'data:image/webp;base64,UklGRhIEAABXRUJQVlA4IAYEAACQGACdASpgAGAAPjEWiUMiISEWrEQAIAMEsQBqnsbeB/YPxm5tfebuf+3P+A6Gw9nWX9b+yDtU+KT/J+ob5gP1k/S/3lPEA9wD9QOtj9AD9kvS79kT9ifRhzQDr+/pHI9JC/qP+AzkHxAcYTj7iA7XrjTI2f8t6Of+T5QfyX/L/9L3D/5J/TP91/ZeFV/UAqyHWSjboum2IHzG9xKYZb9sBRE/dZQ1SXd+mcJ1HgaB9O1t9laOAG760o6lIbA6w05shbLxEA3VzPscTDQAAP776P//nSvzpX50muf/4rxUvGzgDo3w/9mf7FdafM//bi9IIapwbjFKRghtttcd5u4oaV/+53X8YvkNk0ZRP3Xb/8q/m15/zN/2JBLJoKrY0fw87YgmoJTPvmn7IHvvm5Wy/9oQjUbMg478HM7J/5c21OBMa1NFUT2///nngQZo/2E77Ic/L9dwIn3xvIM83x/pUrRr23shV5b/muozfrInvI02mRVU8qCS+tcKH4FXjdwtK2rTsDHIX0KL//TrAWFo9rbPlJPh5H8/bGX/yK+bXkOLkGV19Hfsp4hiEZAKPZxN81Yu9rmGU+4/IAd7YyvWflId6j1T9cq1uKchepjewqY0k2/E7ixI1pVudeHUYFnESa4MyOT8zoSnM3UQ1UJ0AtX/Esbkv9rRqU/ZrU/MKL4+SvZui3yFAVPjxo2WSg34YoVvf09T4jSwd8iXgFTefBMgEwYBna4H3+ggCfD8KP/gy4leC/D54PMdi5GplZBbgzW+4eJXcwl9JK4v3/0ITKNriT6Hj9tKwLXGar+d+piqVLampqsFJeP0mpK5EMYqbnoMIMf+YF/mJq0W76VL80a0STpsOS2/QCD8Rz+ualZjTtmFA/7KqaJZvBPjoxygU3nKs70ahEdph2j2yeP/HEBU+QCC4bRRqxGnE+FMfuKCM2EP8vGfeGXMurG+A8xTlY3j81FmWMBPkcFT+x/4ARK18bVretZ3/AiDCMC57bzO6dex6cxw7wPh7iv9a+LzP7debhEuLj+UG+OQg8mA+b0qqtoKK6uwvzMP7P47d4o8c01nR5VbIKLu0//5X+tsVBknL7/tWhNXVlx75XHZ6lIp3luoZsD5Dp2JvaiAuvFvxi9kL5XHbBWfZdIYS5WEIgGWlHiqUQLwPZ5qu1sVxPJqdaVsbHhqO2t8WNgCf9IMgUe4JToV26zU+dQb1ip3w1zmVc7G3hCNnqXvKDXWRoDrR8E9gZSfa+W5fejD/kX4C47u08ELYPC3VWrttyocKbBwJx/8H51euKiZ+8mBqLtrUev0BYqaywf4TP526RMxaTS2I+Jrsy2KXbOvj23yJ7wVATgiiaW1VMhcV57/WAAAAAAA',
   crowdcube:'data:image/webp;base64,UklGRvgCAABXRUJQVlA4IOwCAACwEACdASpgAGAAPjEUiUKiISEXHfwAIAMEoA1BIguq/u3IF70998Hl0mPER/kv5K/yXuS+YD9Zv0A68n1AP/ZvgHlXeyB5GbRBWwywLhCzbfS3sB7qeYvMpyYi9rj1PMNMxwf7mEiS/OD1gYqEhlyclk2n/SaWRnM8aFS2pvqaYKq4Mvnd333023uNucgAAP792tD+deukC59PoAAOF6ao1NkAxx8Un52qc6NZ+cATQ3/TN2vEPgU0hl9qn4gpSVmKU+sugfMkz5BO5pUtPZASd6vaKQ7/RMbh57AfEi1f9H8Sn4rL6c1Sud3cJokh8vpmrSEjP3NbyIe2rLC/Ze3ArmQ84T82ua6GK7OAcq3dYrFAYsjOhOiUbVFwQ7xT1t0bRJ6Fmnh92UI23virue/HsDmYiYAZJIdLoH8pvpC/HwC93eXPQ5qu1/EoiQx1+fIiaqPZhtS+pfkkXzPhjl0l3VpTOtuHsUej714nuIu6L6/MoxL4l+nZAXiZ+v+TfxBY/JITZkoD2uwV4+J+th9dXmoyWRZLoM3D3Do+s+RD0xAICjujZRl0j/ziumBVi0tJwRhzlAQdCp8pWaCPQtPhmyiVmSeys6s70BpDFPbjXK2Z0MmnSJJvlff6CCozhbhjMImodWX2wGgEgga+2ILBEhBp3/r7nou7JbjwW4+IFW9qKwjkjz9m8KUD24ldzOXDI74Hx+0zjOEBXqnT8TE61MpRIjFSXBVtfGURgntFCZjqNpVOLKVkbZA1iI1JeI+xNlWRWsYiHAnH9avjlub1rL+84YTYaexK2fVM9gGwI01YqeQEPS6M85xIW6EL7l/11rvH/ZTP3FXuhpEIWfYvnXz72b4BWoVhZZvXO4+dwJv3093PfvT1HumQS6QFpdfyI7Mf8pvG/SHJZ1R5Ybtk51vvMYwhcxZlvRCVU0xqmP2+WfD2pTfzk2tn90Fmi816FdaTXdZN//IsHTwHWHms1nreaxMz5qAAAAAA'
 };
-const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i],['cro',/crypto/i],['ibkr',/interactive|ibkr|\bib\b|brokers/i],['bondora',/bondora/i],['crowdcube',/crowdcube/i]];
+const LOGO_RE = [['wise',/wise/i],['ing',/\bing\b/i],['n26',/n26/i],['buddy',/buddy/i],['bbva',/bbva/i],['cro',/crypto/i],['ibkr',/interactive|ibkr|ibks|\bib\b|brokers/i],['bondora',/bondora/i],['crowdcube',/crowdcube/i]];
 function contoIcon(c){
   const m = LOGO_RE.find(([k,re])=>re.test(c.n));
   return m ? `<img class="logo" src="${LOGHI[m[0]]}" alt="">` : `<i class="logo l">${esc((c.n||'?')[0].toUpperCase())}</i>`;
@@ -1431,7 +1434,7 @@ function invFigli(i){ const r = S.inv[i], out = []; for(let j=i+1; j<S.inv.lengt
 function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const f = invFigli(i); return f.length ? round2(sum(f.map(j=>invVal(j,k)||0))) : null; }
 // tipologie degli investimenti: un riquadro ciascuna, con il logo della piattaforma sfocato come sfondo
 const INV_TIPI = [['azioni','Azioni','ibkr'],['crypto','Criptovalute','cro'],['p2p','P2P Lending','bondora'],['altro','Altro','crowdcube']];
-const invTipoAuto = n => /interactive|ibkr|azion|etf|stock|borsa/i.test(n) ? 'azioni' : /crypto|cripto|bitcoin|btc|ethereum|eth\b|solana/i.test(n) ? 'crypto'
+const invTipoAuto = n => /interactive|ibkr|ibks|azion|etf|stock|borsa/i.test(n) ? 'azioni' : /crypto|cripto|bitcoin|btc|ethereum|eth\b|solana/i.test(n) ? 'crypto'
   : /bondora|p2p|lending|mintos|recrowd/i.test(n) ? 'p2p' : 'altro';
 // tipologia di una voce: la sua (voci principali) o quella della voce principale che la contiene
 function invTipo(i){ let j=i; while(j>0 && S.inv[j].lvl>0) j--; const r=S.inv[j]; return r.tipo || invTipoAuto(r.n); }
@@ -1439,40 +1442,60 @@ function invTipo(i){ let j=i; while(j>0 && S.inv[j].lvl>0) j--; const r=S.inv[j]
 function seedInvTipi(){
   const top = S.inv.filter(r=>r.lvl===0), conto = re => (S.conti.find(c=>re.test(c.n))||{}).v ?? null;
   const add = (n, tipo, re) => { if(!S.inv.some(r=>re.test(r.n))){ const v = conto(re); S.inv.push({id:uid(), n, lvl:0, tipo, inv:null, eff:v, agg:v!=null?today():undefined}); } };
-  if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='azioni')) add('Interactive Brokers','azioni',/interactive|ibkr/i);
+  if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='azioni')) add('Interactive Brokers','azioni',/interactive|ibkr|ibks/i);
   if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='crypto')) add('Crypto.com','crypto',/crypto/i);
   if(!top.some(r=>(r.tipo||invTipoAuto(r.n))==='p2p')) add('Bondora','p2p',/bondora/i);
   add('Crowdcube','altro',/crowdcube/i);
 }
+// una volta: IBKS è Interactive Brokers. Se c'è già una voce IBKS, la voce "Interactive Brokers" creata in automatico
+// (vuota, senza sotto-voci) si toglie e il suo valore passa a IBKS
+function unisciIbks(){
+  const k = S.inv.findIndex(r=>r.lvl===0 && /ibks/i.test(r.n)); if(k<0) return;
+  if(!S.inv[k].tipo) S.inv[k].tipo = 'azioni';
+  const d = S.inv.findIndex(r=>r.lvl===0 && r.n==='Interactive Brokers' && r.inv==null);
+  if(d<0 || invFigli(d).length) return;
+  if(S.inv[k].eff==null && S.inv[d].eff!=null){ S.inv[k].eff = S.inv[d].eff; S.inv[k].agg = S.inv[d].agg; }
+  S.inv.splice(d,1);
+}
+const invPct = (e,v) => v>0 && e!=null ? (e-v)/v*100 : null;
+const invPctS = p => (p>=0?'+':'')+p.toFixed(1).replace('.',',')+'%';
+// totali di una tipologia (voci principali)
+function invTot(k){
+  const its = S.inv.map((r,i)=>i).filter(i=>S.inv[i].lvl===0 && invTipo(i)===k);
+  return { its, vi: sum(its.map(i=>invVal(i,'inv')||0)), ve: sum(its.map(i=>invVal(i,'eff')||0)),
+    haE: its.some(i=>invVal(i,'eff')!=null), haI: its.some(i=>invVal(i,'inv')) };
+}
 function renderInv(){
-  const all = S.inv.map((r,i)=>i), top = all.filter(i=>S.inv[i].lvl===0);
-  const ti = sum(top.map(i=>invVal(i,'inv')||0)), te = sum(top.map(i=>invVal(i,'eff')||0));
-  const pct = (e,v) => v>0 && e!=null ? (e-v)/v*100 : null;
-  const tiles = INV_TIPI.map(([k,nome,logo])=>{
-    const its = top.filter(i=>invTipo(i)===k), vi = sum(its.map(i=>invVal(i,'inv')||0)), ve = sum(its.map(i=>invVal(i,'eff')||0)), p = pct(ve,vi);
-    const haE = its.some(i=>invVal(i,'eff')!=null), haI = its.some(i=>invVal(i,'inv'));
+  return `<div class="itiles">${INV_TIPI.map(([k,nome,logo])=>{
+    const {its, vi, ve, haE, haI} = invTot(k), p = invPct(ve,vi);
     const nomi = its.map(i=>S.inv[i].n.replace(/^- /,'')).join(', ');
-    return `<button class="itile ${ui.invTipo===k?'on':''}" onclick="ui.invTipo=ui.invTipo==='${k}'?'':'${k}';render()">
+    return `<button class="itile" onclick="openInvTipo('${k}')">
       <img class="itile-bg" src="${LOGHI[logo]}" alt=""><span class="itile-in">
         <span class="itile-h"><img class="logo" src="${LOGHI[logo]}" alt=""><small>${nome}</small></span>
         <b class="mono">${haE ? eurI(ve) : '–'}</b>
         <small class="itile-s">${its.length ? esc(nomi) : 'nessuna voce'}</small>
-        <span class="itile-f"><span class="mono">inv. ${haI ? eurI(vi) : '–'}</span>${p!=null?`<span class="mono ${p>=0?'pos':'neg'}">${p>=0?'+':''}${p.toFixed(1).replace('.',',')}%</span>`:''}</span>
-      </span></button>`; }).join('');
-  const sel = ui.invTipo, idx = sel ? all.filter(i=>invTipo(i)===sel) : all;
-  const righe = idx.map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = r.inv==null && r.eff==null && invFigli(i).length;
-    const p = vi>0 && ve!=null ? (ve-vi)/vi*100 : null;
+        <span class="itile-f"><span class="mono">inv. ${haI ? eurI(vi) : '–'}</span>${p!=null?`<span class="mono ${p>=0?'pos':'neg'}">${invPctS(p)}</span>`:''}</span>
+      </span></button>`; }).join('')}</div>`;
+}
+// riepilogo di una tipologia: totali e tutte le sue voci; modifica e aggiunta tornano qui
+function openInvTipo(k){
+  ui.invRiep = k;
+  const [, nome, logo] = INV_TIPI.find(t=>t[0]===k), {vi, ve, haE} = invTot(k), p = invPct(ve,vi);
+  const righe = S.inv.map((r,i)=>i).filter(i=>invTipo(i)===k).map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = r.inv==null && r.eff==null && invFigli(i).length;
+    const p = invPct(ve,vi);
     return `<div class="inv-r" onclick="openInv('${r.id}')" style="cursor:pointer"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}${r.agg?`<small class="mut" style="display:block;font-size:10.5px;font-weight:500">agg. ${fmtD(r.agg)}</small>`:auto?'<small class="mut" style="display:block;font-size:10.5px;font-weight:500">somma delle voci</small>':''}</div>
       <div class="mono">${vi?eurI(vi):'–'}</div><div class="mono">${ve!=null?eurI(ve):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('');
-  return `<button class="btn" style="margin-bottom:12px" onclick="openInv()">+ Nuovo investimento</button>
-    <div class="itiles">${tiles}</div>
-    <div class="grid2"><div class="card kpi"><small>Investito</small><b class="mono">${eur(ti,0)}</b></div><div class="card kpi"><small>Valore attuale</small><b class="mono">${eur(te,0)}</b></div></div>
-    <div class="card kpi" style="margin-top:10px"><small>Rendimento totale</small><b class="mono ${te>=ti?'pos':'neg'}">${te>=ti?'+':''}${((te-ti)/(ti||1)*100).toFixed(1).replace('.',',')}%  ·  ${te>=ti?'+':''}${eur(te-ti,0)}</b></div>
-    <h2 class="sec">Dettaglio${sel?' · '+INV_TIPI.find(t=>t[0]===sel)[1]+` <button class="btn sm ghost" style="margin-left:6px" onclick="ui.invTipo='';render()">Mostra tutti</button>`:''}</h2><div class="card" style="padding:4px 12px">
+  sheet(`<h3 class="iriep-h"><img class="logo" src="${LOGHI[logo]}" alt="">${nome}</h3>
+    <div class="grid2"><div class="card kpi"><small>Valore attuale</small><b class="mono">${haE?eur(ve,0):'–'}</b></div><div class="card kpi"><small>Investito</small><b class="mono">${vi?eur(vi,0):'–'}</b></div></div>
+    <div class="card kpi" style="margin-top:10px"><small>Rendimento</small><b class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':`${invPctS(p)}  ·  ${ve>=vi?'+':''}${eur(ve-vi,0)}`}</b></div>
+    <h2 class="sec">Voci</h2><div class="card" style="padding:4px 12px">
       <div class="inv-r h"><div>Voce</div><div>Inv.</div><div>Attuale</div><div>%</div></div>
-      ${righe || '<div class="empty">Nessun investimento. Tocca "+ Nuovo investimento".</div>'}</div>
-    <p class="note" style="margin-top:10px">Tocca un riquadro per vedere solo quella tipologia, una voce per modificarla. Il rendimento % è calcolato da investito e valore attuale.</p>`;
+      ${righe || '<div class="empty">Nessuna voce in questa tipologia.</div>'}</div>
+    <button class="btn" style="margin-top:12px" onclick="openInv()">+ Aggiungi</button>
+    <p class="note" style="margin-top:10px">Tocca una voce per modificarla. Il rendimento % è calcolato da investito e valore attuale.</p>`);
 }
+// dopo modifica/eliminazione si torna al riepilogo da cui si è partiti
+const invTorna = () => ui.invRiep ? openInvTipo(ui.invRiep) : closeSheet();
 function openInv(id){
   const i = id ? S.inv.findIndex(x=>x.id===id) : -1, r = i>=0 ? S.inv[i] : {n:'', lvl:0, inv:null, eff:null};
   const haFigli = i>=0 && invFigli(i).length;
@@ -1482,7 +1505,7 @@ function openInv(id){
   const dec = v => v==null ? '' : String(v).replace('.',',');
   sheet(`<h3>${id?'Modifica investimento':'Nuovo investimento'}</h3>
     <div class="f"><label>Nome</label><input id="iv-n" value="${esc(r.n.replace(/^- /,''))}" placeholder="es. Bitcoin, ETF MSCI World, Bondora"></div>
-    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(r.tipo || (i>=0 ? invTipo(i) : ui.invTipo || 'altro'))===k?'selected':''}>${l}</option>`).join('')}</select>
+    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(r.tipo || (i>=0 ? invTipo(i) : ui.invRiep || 'altro'))===k?'selected':''}>${l}</option>`).join('')}</select>
       <p class="note" style="margin:4px 0 0">Per le voci dentro un'altra vale la tipologia di quella principale.</p></div>
     <div class="f"><label>Dentro a</label><select id="iv-p" ${haFigli?'disabled':''}>${opz}</select>
       ${haFigli?'<p class="note" style="margin:4px 0 0">Contiene altre voci: per spostarla sposta prima quelle.</p>':''}</div>
@@ -1492,7 +1515,7 @@ function openInv(id){
     </div>
     <button class="btn" onclick="saveInv('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delInv('${id}')">Elimina</button>`:''}
-    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+    <button class="btn ghost" style="margin-top:8px" onclick="invTorna()">Annulla</button>`);
 }
 function saveInv(id){
   const n = $('iv-n').value.trim(); if(!n) return toast('Inserisci il nome');
@@ -1515,13 +1538,13 @@ function saveInv(id){
       S.inv.splice(j, 0, r);
     }
   }
-  save(); closeSheet(); render(); toast('Salvato');
+  save(); render(); invTorna(); toast('Salvato');
 }
 function delInv(id){
   const i = S.inv.findIndex(x=>x.id===id); let j = i+1;
   while(j<S.inv.length && S.inv[j].lvl>S.inv[i].lvl) j++;
   if(!confirm(j-i>1 ? `Eliminare "${S.inv[i].n}" e le ${j-i-1} voci che contiene?` : `Eliminare "${S.inv[i].n}"?`)) return;
-  S.inv.splice(i, j-i); save(); closeSheet(); render();
+  S.inv.splice(i, j-i); save(); render(); invTorna();
 }
 
 /* ---- Loghi dei servizi (simboli da Simple Icons, CC0; iliad disegnato a mano) ---- */
