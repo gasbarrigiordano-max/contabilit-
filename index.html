@@ -3,19 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#0b0f0e">
+<meta name="theme-color" content="#f6f4ef">
+<script>
+  let t = 'carta'; try{ t = localStorage.getItem('bilancio:tema') || 'carta'; }catch(e){}
+  document.documentElement.dataset.theme = t;
+  if(t==='scuro') document.querySelector('meta[name=theme-color]').content = '#0b0f0e';
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Bilancio — Finanze personali</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+/* tema Carta (predefinito): bianco caldo e verde smeraldo */
 :root{
-  --bg:#0b0f0e; --panel:#121917; --panel2:#18211e; --line:#233029;
-  --ink:#e8f1ec; --ink2:#9db0a6; --ink3:#62756b;
-  --acc:#34d399; --acc-dim:rgba(52,211,153,.12);
-  --neg:#fb7185; --warn:#fbbf24;
+  color-scheme:light;
+  --bg:#f6f4ef; --panel:#ffffff; --panel2:#f1eee7; --line:#e4dfd4;
+  --ink:#1d2420; --ink2:#55605a; --ink3:#8a938d;
+  --acc:#0f9f6e; --acc-dim:rgba(15,159,110,.12); --on-acc:#ffffff; --acc-shadow:rgba(15,159,110,.28);
+  --neg:#d9304f; --neg-line:#f1c3cc; --warn:#c97a06; --blue:#2a78d6;
+  --glass:rgba(246,244,239,.92); --sheet:#ffffff; --overlay:rgba(20,24,22,.35); --track:rgba(0,0,0,.07); --sub-bg:rgba(0,0,0,.02);
+  --hero-bg:linear-gradient(160deg,#e3f3ea,#ffffff 65%); --hero-line:#bfe3cf; --hero-ink:#0b7a54; --gate-glow:#dff1e7;
   --r:14px;
   --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
+}
+/* tema Scuro (quello di prima): grafite e verde */
+:root[data-theme="scuro"]{
+  color-scheme:dark;
+  --bg:#0b0f0e; --panel:#121917; --panel2:#18211e; --line:#233029;
+  --ink:#e8f1ec; --ink2:#9db0a6; --ink3:#62756b;
+  --acc:#34d399; --acc-dim:rgba(52,211,153,.12); --on-acc:#04130c; --acc-shadow:rgba(52,211,153,.35);
+  --neg:#fb7185; --neg-line:#4a2430; --warn:#fbbf24; --blue:#60a5fa;
+  --glass:rgba(11,15,14,.92); --sheet:#0f1513; --overlay:rgba(0,0,0,.6); --track:rgba(0,0,0,.25); --sub-bg:rgba(255,255,255,.015);
+  --hero-bg:linear-gradient(160deg,#143028,#0f1a17 60%); --hero-line:#1f4a3b; --hero-ink:#7fcfae; --gate-glow:#143028;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Manrope',system-ui,sans-serif;font-size:14px}
@@ -24,12 +43,12 @@ body{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(150px + 
 button{font-family:inherit;color:inherit}
 
 /* masthead */
-.mast{position:sticky;top:0;z-index:20;background:rgba(11,15,14,.92);backdrop-filter:blur(12px);
+.mast{position:sticky;top:0;z-index:20;background:var(--glass);backdrop-filter:blur(12px);
   padding:calc(12px + var(--sat)) 16px 10px;border-bottom:1px solid var(--line)}
 .mast-top{display:flex;align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:17px}
 .brand i{width:22px;height:22px;border-radius:7px;background:var(--acc);display:grid;place-items:center}
-.brand i svg{width:13px;height:13px}
+.brand i svg{width:13px;height:13px;stroke:var(--on-acc)}
 .icon-btn{background:none;border:1px solid var(--line);width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink2);cursor:pointer}
 .icon-btn svg{width:17px;height:17px}
 .period{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
@@ -38,7 +57,7 @@ button{font-family:inherit;color:inherit}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-top:8px;padding-bottom:2px}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;border:1px solid var(--line);background:none;color:var(--ink2);padding:6px 11px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer}
-.chip.on{background:var(--acc);border-color:var(--acc);color:#04130c}
+.chip.on{background:var(--acc);border-color:var(--acc);color:var(--on-acc)}
 
 /* layout */
 .view{display:none;padding:14px 16px}
@@ -48,8 +67,8 @@ h2.sec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .kpi small{display:block;color:var(--ink3);font-size:11px;font-weight:600;margin-bottom:4px}
 .kpi b{font-size:19px;font-weight:700}
-.hero{background:linear-gradient(160deg,#143028,#0f1a17 60%);border-color:#1f4a3b}
-.hero small{color:#7fcfae}
+.hero{background:var(--hero-bg);border-color:var(--hero-line)}
+.hero small{color:var(--hero-ink)}
 .hero b{font-size:30px;letter-spacing:-.02em}
 .pos{color:var(--acc)} .neg{color:var(--neg)} .mut{color:var(--ink3)}
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -87,7 +106,7 @@ input:focus,select:focus{border-color:var(--acc)}
 .tx .mid{flex:1;min-width:0}
 .tx .mid b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx .mid small{color:var(--ink3);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-.fab{position:fixed;right:max(16px,calc(50% - 244px));bottom:calc(84px + var(--sab));width:54px;height:54px;border-radius:17px;border:none;background:var(--acc);color:#04130c;font-size:28px;font-weight:600;box-shadow:0 8px 24px rgba(52,211,153,.35);cursor:pointer;z-index:15;display:none}
+.fab{position:fixed;right:max(16px,calc(50% - 244px));bottom:calc(84px + var(--sab));width:54px;height:54px;border-radius:17px;border:none;background:var(--acc);color:var(--on-acc);font-size:28px;font-weight:600;box-shadow:0 8px 24px var(--acc-shadow);cursor:pointer;z-index:15;display:none}
 .fab.on{display:block}
 
 /* matrix */
@@ -109,7 +128,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .acct:last-child{border:none}
 .ord{display:flex;align-items:center;gap:6px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
 .ord span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ord.sub{padding-left:20px;font-size:13px;color:var(--ink2);cursor:default;background:rgba(255,255,255,.015)}
+.ord.sub{padding-left:20px;font-size:13px;color:var(--ink2);cursor:default;background:var(--sub-bg)}
 .ord .btn.sm{padding:5px 10px}
 .ord .btn:disabled{opacity:.25}
 .acct-n{display:flex;align-items:center;gap:12px;min-width:0}
@@ -119,7 +138,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .pchart{position:relative;margin-top:12px;min-height:60px}
 .pchart svg{display:block;touch-action:pan-y;outline:none}
 .pchart .ax{fill:var(--ink3);font-size:10px;font-family:'JetBrains Mono',monospace}
-.ptip{position:absolute;display:none;pointer-events:none;background:#0f1513;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11.5px;color:var(--ink2);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.ptip{position:absolute;display:none;pointer-events:none;background:var(--sheet);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11.5px;color:var(--ink2);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .ptip .v{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--ink)}
 .ptip .m{color:var(--ink3);margin-bottom:4px}
 .pat-delta{display:flex;gap:22px}
@@ -128,7 +147,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 /* patrimonio: riepilogo con composizione */
 .pat-hero{display:grid;gap:16px}
 .pat-hero .kpi b{font-size:30px;letter-spacing:-.02em}
-.pat-bar{display:flex;gap:3px;height:10px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,.25)}
+.pat-bar{display:flex;gap:3px;height:10px;border-radius:6px;overflow:hidden;background:var(--track)}
 .pat-bar div{min-width:4px}
 .pat-leg{display:flex;flex-direction:column;gap:7px;margin-top:12px;font-size:13px}
 .pat-leg div{display:flex;align-items:center;gap:8px}
@@ -143,9 +162,9 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .gh{display:flex;justify-content:space-between;align-items:baseline;margin:20px 2px 6px}
 .gh b{font-size:13px} .gh span{font-size:13px;color:var(--ink2)}
 .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--acc-dim);color:var(--acc)}
-.btn{background:var(--acc);color:#04130c;border:none;border-radius:11px;padding:12px 16px;font-weight:800;font-size:14px;cursor:pointer;width:100%}
+.btn{background:var(--acc);color:var(--on-acc);border:none;border-radius:11px;padding:12px 16px;font-weight:800;font-size:14px;cursor:pointer;width:100%}
 .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink2)}
-.btn.danger{background:none;border:1px solid #4a2430;color:var(--neg)}
+.btn.danger{background:none;border:1px solid var(--neg-line);color:var(--neg)}
 .btn.sm{padding:7px 11px;font-size:12px;width:auto;border-radius:9px}
 .rate{margin-bottom:8px}
 .rate .row{margin-bottom:8px}
@@ -175,7 +194,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 
 /* bottom nav */
 nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:30;
-  background:rgba(11,15,14,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  background:var(--glass);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   display:flex;padding:7px 6px calc(7px + var(--sab))}
 nav button{flex:1;background:none;border:none;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:5px 0;cursor:pointer}
 nav button svg{width:21px;height:21px}
@@ -183,20 +202,20 @@ nav button.wide-only{display:none}
 nav button.on{color:var(--acc)}
 
 /* sheet */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:none;align-items:flex-end;justify-content:center}
+.ov{position:fixed;inset:0;background:var(--overlay);z-index:50;display:none;align-items:flex-end;justify-content:center}
 .ov.on{display:flex}
-.sheet{background:#0f1513;border:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:520px;max-height:92vh;overflow:auto;padding:18px 16px calc(20px + var(--sab))}
+.sheet{background:var(--sheet);border:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:520px;max-height:92vh;overflow:auto;padding:18px 16px calc(20px + var(--sab))}
 .sheet h3{margin:0 0 14px;font-size:17px}
 .f{margin-bottom:12px}
 .f label{display:block;font-size:11px;font-weight:700;color:var(--ink3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
 .amt{font-size:28px;font-weight:700;text-align:center;font-family:'JetBrains Mono',monospace}
-.toast{position:fixed;left:50%;bottom:calc(92px + var(--sab));transform:translateX(-50%);background:var(--acc);color:#04130c;padding:9px 16px;border-radius:99px;font-weight:700;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast{position:fixed;left:50%;bottom:calc(92px + var(--sab));transform:translateX(-50%);background:var(--acc);color:var(--on-acc);padding:9px 16px;border-radius:99px;font-weight:700;font-size:13px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.on{opacity:1}
 .note{font-size:12px;color:var(--ink3);line-height:1.5}
 .btn:disabled{opacity:.6}
 
 /* accesso (email/password + passphrase) */
-.gate{position:fixed;inset:0;z-index:100;background:radial-gradient(120% 70% at 50% 0%,#143028,var(--bg) 60%);display:none;align-items:center;justify-content:center;padding:24px 20px calc(24px + var(--sab))}
+.gate{position:fixed;inset:0;z-index:100;background:radial-gradient(120% 70% at 50% 0%,var(--gate-glow),var(--bg) 60%);display:none;align-items:center;justify-content:center;padding:24px 20px calc(24px + var(--sab))}
 .gate.on{display:flex}
 .gate-box{width:100%;max-width:340px;text-align:center}
 .gate-brand{justify-content:center;font-size:24px;margin-bottom:14px}
@@ -439,7 +458,19 @@ const store = CLOUD ? cloud : localStore;
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const M3 = MESI.map(m=>m.slice(0,3));
-const PAL = ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#a3e635','#94a3b8','#f87171'];
+const PAL_TEMA = {
+  scuro: ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#a3e635','#94a3b8','#f87171'],
+  carta: ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948']
+};
+const tema = () => document.documentElement.dataset.theme==='scuro' ? 'scuro' : 'carta';
+let PAL = PAL_TEMA[tema()];
+function setTema(t){
+  document.documentElement.dataset.theme = t;
+  try{ localStorage.setItem('bilancio:tema', t); }catch(e){}
+  PAL = PAL_TEMA[t];
+  document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  render(); openSettings();
+}
 
 let S = CLOUD ? buildSeed() : (localStore.get() || buildSeed());
 const now = new Date();
@@ -746,14 +777,15 @@ function render(){
 /* ---- Panoramica ---- */
 function donut(data){
   const tot = sum(data.map(d=>d[1])) || 1; const R=48, C=2*Math.PI*R; let off=0;
-  const arcs = data.map(([k,v],i)=>{ const len=v/tot*C; const s=`<circle cx="64" cy="64" r="${R}" fill="none" stroke="${PAL[i%PAL.length]}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}"/>`; off+=len; return s; }).join('');
-  return `<div class="donut"><svg viewBox="0 0 128 128"><circle cx="64" cy="64" r="${R}" fill="none" stroke="#18211e" stroke-width="16"/>${arcs}</svg><div class="c"><div><b class="mono">${eur0(tot)}</b>uscite</div></div></div>`;
+  const arcs = data.map(([k,v],i)=>{ const len=v/tot*C; const s=`<circle cx="64" cy="64" r="${R}" fill="none" stroke="${k==='Altre'&&i===PAL.length-1?'#9a9f9c':PAL[i%PAL.length]}" stroke-width="16" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}"/>`; off+=len; return s; }).join('');
+  return `<div class="donut"><svg viewBox="0 0 128 128"><circle cx="64" cy="64" r="${R}" fill="none" style="stroke:var(--panel2)" stroke-width="16"/>${arcs}</svg><div class="c"><div><b class="mono">${eur0(tot)}</b>uscite</div></div></div>`;
 }
 function renderHome(){
   const p = periodTx(); const U = p.filter(t=>t.t==='u'), E = p.filter(t=>t.t==='e');
   const tu = sum(U.map(t=>t.amt)), te = sum(E.map(t=>t.amt)), saldo = te-tu;
   const patr = sum(S.conti.map(c=>c.v)), liq = sum(S.conti.filter(c=>c.g!=='Investimenti').map(c=>c.v));
-  const byCat = groupBy(U, t=>t.cat);
+  let byCat = groupBy(U, t=>t.cat);
+  if(byCat.length > PAL.length) byCat = [...byCat.slice(0, PAL.length-1), ['Altre', sum(byCat.slice(PAL.length-1).map(x=>x[1]))]];
   const bySub = groupBy(U, t=>t.cat + (t.sub?' › '+t.sub:'')).slice(0,8);
   const yU = Array(12).fill(0), yE = Array(12).fill(0);
   S.tx.filter(t=>txYear(t)===ui.year).forEach(t=>{ (t.t==='u'?yU:yE)[txMonth(t)] += t.amt; });
@@ -775,7 +807,7 @@ function renderHome(){
       <div class="card kpi" onclick="showTab('pat')"><small>Patrimonio</small><b class="mono">${eur0(patr)}</b></div>
     </div>
     <div class="h-cat"><h2 class="sec">Uscite per categoria</h2>
-    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${eurI(v)}</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div></div>
+    <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${k==='Altre'&&i===PAL.length-1?'#9a9f9c':PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${eurI(v)}</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div></div>
     <div class="h-bars"><h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
     <div class="card"><div style="display:flex;gap:2px">${bars}</div>
       <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div></div>
@@ -946,7 +978,7 @@ function contoIcon(c){
   const m = LOGO_RE.find(([k,re])=>re.test(c.n));
   return m ? `<img class="logo" src="${LOGHI[m[0]]}" alt="">` : `<i class="logo l">${esc((c.n||'?')[0].toUpperCase())}</i>`;
 }
-const GRP = [['Banche','var(--acc)'],['Cash','var(--warn)'],['Investimenti','#60a5fa']];
+const GRP = [['Banche','var(--acc)'],['Cash','var(--warn)'],['Investimenti','var(--blue)']];
 function renderPat(){
   const patr = sum(S.conti.map(c=>c.v)), base = patr>0 ? patr : 1;
   const tot = g => sum(S.conti.filter(c=>c.g===g).map(c=>c.v));
@@ -954,7 +986,7 @@ function renderPat(){
   // riepilogo: totale + barra della composizione (Banche / Cash / Investimenti)
   let html = `<div class="card hero pat-hero">
     <div class="kpi"><small>Patrimonio totale</small><b class="mono">${eur(patr,0)}</b>
-      <div class="note" style="color:#7fcfae;margin-top:4px">Liquidità ${eur(tot('Banche')+tot('Cash'),0)}</div></div>
+      <div class="note" style="color:var(--hero-ink);margin-top:4px">Liquidità ${eur(tot('Banche')+tot('Cash'),0)}</div></div>
     <div><div class="pat-bar">${GRP.map(([g,col])=>tot(g)>0?`<div style="flex:${tot(g)};background:${col}"></div>`:'').join('')}</div>
       <div class="pat-leg">${GRP.map(([g,col])=>`<div><i style="background:${col}"></i><span>${g}</span><b class="mono">${eur(tot(g),0)}</b><em class="mono">${pct(tot(g))}</em></div>`).join('')}</div></div>
   </div><div class="pgs">`;
@@ -1012,16 +1044,16 @@ function drawPatrChart(){
   const y = v => T + (hi-v)/(hi-lo||1)*(H-T-B);
   const k = v => Math.abs(v)>=1000 ? (v/1000).toLocaleString('it-IT',{maximumFractionDigits:1})+'K' : String(Math.round(v));
   let g = '';
-  for(let v=lo; v<=hi+1e-6; v+=step) g += `<line x1="${L}" x2="${W-Rr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" class="ax">${k(v)} €</text>`;
+  for(let v=lo; v<=hi+1e-6; v+=step) g += `<line x1="${L}" x2="${W-Rr}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" class="ax">${k(v)} €</text>`;
   const every = Math.ceil(serie.length / Math.floor((W-L-Rr)/44));
   serie.forEach((f,i)=>{ if(i%every===0 || i===serie.length-1) g += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" class="ax">${M3[+f.m.slice(5)-1]}${f.m.slice(5)==='01'||i===0?' '+f.m.slice(2,4):''}</text>`; });
   const path = serie.map((f,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(f.tot).toFixed(1)}`).join('');
   const lastI = serie.length-1;
   box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Andamento del patrimonio, ultimo valore ${eur(vals[lastI],0)}">
-    ${g}<path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="${x(lastI)}" cy="${y(vals[lastI])}" r="4.5" fill="var(--acc)" stroke="var(--panel)" stroke-width="2"/>
-    <line id="pc-x" y1="${T}" y2="${H-B}" stroke="var(--ink3)" stroke-width="1" style="display:none"/>
-    <circle id="pc-d" r="5" fill="var(--acc)" stroke="var(--panel)" stroke-width="2" style="display:none"/>
+    ${g}<path d="${path}" fill="none" style="stroke:var(--acc)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(lastI)}" cy="${y(vals[lastI])}" r="4.5" style="fill:var(--acc);stroke:var(--panel)" stroke-width="2"/>
+    <line id="pc-x" y1="${T}" y2="${H-B}" stroke-width="1" style="display:none;stroke:var(--ink3)"/>
+    <circle id="pc-d" r="5" stroke-width="2" style="display:none;fill:var(--acc);stroke:var(--panel)"/>
     <rect x="${L}" y="0" width="${W-L-Rr}" height="${H}" fill="transparent" id="pc-hit"/></svg>
     <div class="ptip" id="pc-tip"></div>`;
   const svg = box.querySelector('svg'), tip = $('pc-tip');
@@ -1617,7 +1649,11 @@ function openSettings(){
       <div class="grid2" style="margin-top:10px"><button class="btn ghost" onclick="lockVault()">Blocca</button><button class="btn ghost" onclick="logout()">Esci</button></div>
       <button class="btn ghost" style="margin-top:8px" onclick="openPass()">Cambia passphrase</button>`
     : `<p class="note">I dati restano solo in questo browser. Configura Firebase (vedi HANDOFF.md) per sincronizzarli cifrati.</p>`;
-  sheet(`<h3>Dati e backup</h3>
+  sheet(`<h3>Impostazioni</h3>
+    <h2 class="sec" style="margin-top:4px">Tema</h2>
+    <div class="seg" style="margin-bottom:6px">${[['carta','Carta (chiaro)'],['scuro','Scuro']].map(([v,l])=>`<button class="${tema()===v?'on':''}" onclick="setTema('${v}')">${l}</button>`).join('')}</div>
+    <p class="note" style="margin:0 0 4px">Il tema vale per questo dispositivo.</p>
+    <h2 class="sec">Dati e backup</h2>
     ${acct}
     <h2 class="sec" style="margin-top:16px">Importa da CSV</h2>
     <div class="f"><label>Che dati sono?</label><select id="csv-k">

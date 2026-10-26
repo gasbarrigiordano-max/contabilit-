@@ -1,7 +1,7 @@
 # Bilancio — app finanze personali (riepilogo per riprendere il lavoro)
 
 ## Obiettivo
-App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del gommone" (Giornale di Bordo): **un unico file HTML**, mobile-first (iPhone), hosting su **GitHub Pages**, login **email/password** con **Firebase** per sincronizzare i dati. Stile diverso dal gommone: grafite scuro + verde smeraldo (Manrope + JetBrains Mono) invece di blu notte/ottone.
+App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del gommone" (Giornale di Bordo): **un unico file HTML**, mobile-first (iPhone), hosting su **GitHub Pages**, login **email/password** con **Firebase** per sincronizzare i dati. Stile diverso dal gommone (Manrope + JetBrains Mono). Tema predefinito **Carta**: bianco caldo + verde smeraldo; tema **Scuro** (grafite + verde, quello originale) selezionabile da Impostazioni → Tema, salvato per dispositivo in `localStorage` (`bilancio:tema`). I colori sono tutti variabili CSS in `:root` / `:root[data-theme="scuro"]`; la tavolozza delle categorie cambia col tema (chiaro: 8 colori validati, oltre l'ottava categoria la ciambella raggruppa in "Altre").
 
 ## Stato attuale
 - File: `index.html` (un solo file, nessuna dipendenza oltre a Google Fonts e, solo in modalità cloud, l'SDK Firebase compat 10.14.1 caricato da gstatic).
