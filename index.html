@@ -994,14 +994,15 @@ const meseVista = () => ui.month==='all' ? thisMonth() : `${ui.year}-${String(ui
 function rateCard(){
   const ym = meseVista();
   const list = [...rateDelMese(ym).map(x=>({...x, k:x.r.tipo||'Altro'})),
-    ...abboDelMese(ym).map(x=>({...x, k:x.a.freq===1 ? 'Abbonamenti' : x.a.n}))];
+    ...abboDelMese(ym).map(x=>({...x, k:x.a.freq===1 ? 'Abbonamenti' : x.a.n})),
+    ...bordoDelMese(ym).map(x=>({...x, k:x.n, amt:x.amt||0, ign:x.amt==null}))];
   const by = new Map();
-  list.forEach(x=>{ const g=by.get(x.k)||{due:0,paid:0}; g[x.paid?'paid':'due']+=x.amt; by.set(x.k,g); });
+  list.forEach(x=>{ const g=by.get(x.k)||{due:0,paid:0}; g[x.paid?'paid':'due']+=x.amt; if(x.ign && !x.paid) g.ign=true; by.set(x.k,g); });
   const groups = [...by.entries()].sort((a,b)=>(b[1].due-a[1].due) || (b[1].paid-a[1].paid)); // prima quelle da pagare
   const due = sum(list.filter(x=>!x.paid).map(x=>x.amt)), paid = sum(list.filter(x=>x.paid).map(x=>x.amt));
   const rows = WIDE.matches ? 8 : paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
-  const amt = v => v ? `<b class="mono">${eur(v)}</b>` : `<b class="ok">✓</b>`;
-  const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due)}</div>`).join('')
+  const amt = (v, ign) => v ? `<b class="mono">${eur(v)}${ign?' + ?':''}</b>` : ign ? `<b class="mono mut">?</b>` : `<b class="ok">✓</b>`;
+  const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due, g.ign)}</div>`).join('')
     + (groups.length>MAX ? `<div><span>+ altri ${groups.length-MAX}</span>${amt(sum(groups.slice(MAX).map(([k,g])=>g.due)))}</div>` : '');
   return `<div class="card kpi rc" onclick="showTab('rate')"><small>Da pagare · ${M3[+ym.slice(5)-1]}${ym.slice(0,4)!=now.getFullYear()?' '+ym.slice(0,4):''}</small>
     ${list.length ? `<b class="mono ${due?'neg':'pos'}">${due?eur(due):'Tutto pagato'}</b><div class="rl">${lines}</div>
@@ -1647,6 +1648,9 @@ function renderAbbo(){
     <div class="note" style="margin:10px 2px 0">${MESI[now.getMonth()]}: ${pagati.length?`pagati ${eur(sum(pagati.map(t=>t.amt)))}`:'nessun pagamento ancora'}${delMese.length?` · da pagare ${eur(sum(delMese.map(a=>a.costo)))} (${delMese.map(a=>esc(a.n)).join(', ')})`:''}</div>
     <h2 class="sec">Attivi · ${att.length}</h2>${att.map(card).join('') || '<div class="empty">Nessun abbonamento. Aggiungi SIM, palestra, Apple Music, iCloud…</div>'}
     ${sosp.length?`<h2 class="sec">Sospesi · ${sosp.length}</h2>${sosp.map(card).join('')}`:''}
+    ${bordo.stato==='ok' ? (()=>{ const v = bordo.voci.filter(x=>!x.paid); return `<h2 class="sec">Dal Giornale di Bordo · ${v.length}</h2>${v.map(x=>`<div class="tx" style="cursor:default"><div class="mid"><b>${esc(x.n)}</b><small>${esc([x.chi, 'scadenza '+fmtD(x.d)+' · '+quando(x.d)].filter(Boolean).join(' · '))}</small></div>
+      <b class="mono">${x.amt!=null?eur(x.amt):'–'}</b></div>`).join('') || '<div class="empty">Nessuna scadenza nel Giornale.</div>'}
+      <p class="note" style="margin-top:6px">Importo = l'ultimo pagato. Si aggiornano quando rinnovi nel Giornale.</p>`; })() : ''}
     <p class="note" style="margin-top:12px">Il giorno della scadenza (o alla prima apertura dell'app dopo) l'abbonamento viene registrato tra le uscite e pagato con il metodo scelto: con carta di credito finisce nell'estratto conto, con carta di debito o conto esce subito dal saldo. Poi la scadenza passa al periodo successivo.</p>`;
 }
 function openAbbo(id){
@@ -2016,6 +2020,91 @@ function delTx(id){
   S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato');
 }
 
+/* ============ GIORNALE DI BORDO (app del gommone): scadenze di auto, scooter, moto, gommone e carrello ============
+   Sola lettura dal suo progetto Firebase, con l'account del Giornale (accesso una volta per dispositivo, da Impostazioni).
+   Lì i dati stanno in users/{uid}/data/{chiave} = {value: JSON}; ogni voce è un periodo pagato {scadenza, premio|importo}:
+   la scadenza della più recente è il prossimo pagamento (importo stimato = l'ultimo pagato), quelle già rinnovate risultano pagate.
+   Le scadenze restano in memoria: non entrano nei dati cifrati di Bilancio e nel Giornale non si scrive nulla. */
+const BORDO_CFG = {
+  apiKey: "AIzaSyCslXOf7xIBBHQfEMWspOw4kGp9vwmu2QY",
+  authDomain: "app-gommone.firebaseapp.com",
+  projectId: "app-gommone",
+  appId: "1:291691340599:web:c6682923f4a45e1a2970b2"
+};
+const BORDO_FONTI = [ // [chiave, mezzo, cosa]
+  ...['auto','scooter','moto'].flatMap(v=>[[v+'_insurances',v,'Assicurazione'],[v+'_bollo',v,'Bollo'],[v+'_revisioni',v,'Revisione']]),
+  ['insurances','gommone','Assicurazione'], ['carrelloInsurances','carrello','Assicurazione'], ['carrelloBollo','carrello','Bollo'], ['carrelloRevisioni','carrello','Revisione']];
+const bordo = {stato:'off', voci:[], err:'', email:'', agg:0};
+let bordoApp = null, bordoBoxH = '';
+const bordoOn = () => { try{ return localStorage.getItem('bilancio:bordo')==='1'; }catch(e){ return false; } };
+// dalle liste del Giornale alle scadenze {n:'Bollo auto', chi, d, amt (null = importo mai inserito), paid}
+function bordoVoci(dati){
+  const out = [], imp = x => x.premio ?? x.importo ?? null;
+  BORDO_FONTI.forEach(([k, mezzo, cosa])=>{
+    const l = (Array.isArray(dati[k]) ? dati[k] : []).filter(x=>x && x.scadenza).sort((a,b)=>a.scadenza.localeCompare(b.scadenza));
+    l.forEach((x,i)=>{ const dopo = l[i+1];
+      out.push({n:`${cosa} ${mezzo}`, chi:x.compagnia||'', d:x.scadenza, amt: dopo ? imp(dopo) : imp(x), paid:!!dopo}); });
+  });
+  return out.sort((a,b)=>a.d.localeCompare(b.d));
+}
+const bordoDelMese = ym => bordo.voci.filter(v=>v.d.slice(0,7)===ym);
+function bordoAggiorna(){
+  if(!CLOUD || cloud.key) render();
+  // solo se cambia: non cancella email e password mentre le scrivi
+  const b = $('bordo-box'), h = bordoBox(); if(b && bordoBoxH!==h){ b.innerHTML = bordoBoxH = h; }
+}
+async function bordoAvvia(){
+  if(bordoApp) return bordoApp;
+  if(!window.firebase) for(const f of ['app','auth','firestore']) await loadScript(`${FIREBASE_SDK}firebase-${f}-compat.js`);
+  bordoApp = (firebase.apps||[]).find(a=>a.name==='bordo') || firebase.initializeApp(BORDO_CFG, 'bordo');
+  bordoApp.auth().onAuthStateChanged(u=>{
+    bordo.email = u ? u.email : '';
+    if(u) return bordoLeggi();
+    bordo.stato = 'login'; bordo.voci = []; bordoAggiorna();
+  });
+  return bordoApp;
+}
+async function bordoLeggi(){
+  const u = bordoApp && bordoApp.auth().currentUser; if(!u) return;
+  bordo.stato = 'carico'; bordoAggiorna();
+  try{
+    const col = bordoApp.firestore().collection('users').doc(u.uid).collection('data');
+    const docs = await Promise.all(BORDO_FONTI.map(([k])=>col.doc(k).get()));
+    const dati = {};
+    docs.forEach((d,i)=>{ if(d.exists) try{ dati[BORDO_FONTI[i][0]] = JSON.parse(d.data().value); }catch(e){} });
+    bordo.voci = bordoVoci(dati); bordo.stato = 'ok'; bordo.agg = Date.now();
+  }catch(e){ console.error(e); bordo.stato = 'err'; bordo.err = e.code==='permission-denied' ? 'accesso negato dalle regole del Giornale' : (e.code||e.message); }
+  bordoAggiorna();
+}
+async function bordoCollega(){
+  const e = $('bd-e').value.trim(), p = $('bd-p').value;
+  if(!e || !p) return toast('Inserisci email e password del Giornale');
+  $('bd-b').disabled = true; $('bd-b').textContent = 'Collego…';
+  try{
+    await bordoAvvia();
+    await bordoApp.auth().signInWithEmailAndPassword(e, p);
+    try{ localStorage.setItem('bilancio:bordo','1'); }catch(x){}
+  }catch(x){ toast(x.code ? authMsg(x) : 'Giornale di Bordo non raggiungibile'); $('bd-b').disabled = false; $('bd-b').textContent = 'Collega'; }
+}
+async function bordoScollega(){
+  try{ localStorage.removeItem('bilancio:bordo'); }catch(x){}
+  if(bordoApp) await bordoApp.auth().signOut();
+  Object.assign(bordo, {stato:'off', voci:[], email:''}); bordoAggiorna();
+}
+function bordoBox(){
+  const prossime = bordo.voci.filter(v=>!v.paid).slice(0,4);
+  if(bordo.stato==='ok') return `<p class="note">Collegato come <b>${esc(bordo.email)}</b>: assicurazioni, bolli e revisioni compaiono in Panoramica (Da pagare) e in Abbonamenti.</p>
+    ${prossime.map(v=>`<div class="row" style="font-size:13px;margin:4px 0"><span>${esc(v.n)} · ${fmtD(v.d)}</span><b class="mono">${v.amt!=null?eur(v.amt):'–'}</b></div>`).join('') || '<p class="note">Nessuna scadenza trovata nel Giornale.</p>'}
+    <div class="grid2" style="margin-top:10px"><button class="btn ghost" onclick="bordoLeggi()">Aggiorna</button><button class="btn ghost" onclick="bordoScollega()">Scollega</button></div>`;
+  if(bordo.stato==='carico') return `<p class="note">Leggo le scadenze dal Giornale di Bordo…</p>`;
+  if(bordo.stato==='err') return `<p class="note neg">Lettura non riuscita: ${esc(bordo.err)}</p><div class="grid2"><button class="btn ghost" onclick="bordoLeggi()">Riprova</button><button class="btn ghost" onclick="bordoScollega()">Scollega</button></div>`;
+  return `<p class="note">Collega l'app Giornale di Bordo per vedere le scadenze di assicurazione, bollo e revisione (auto, scooter, moto, gommone, carrello) in Panoramica. Solo lettura: nel Giornale non cambia nulla.</p>
+    <form onsubmit="event.preventDefault();bordoCollega()"><div class="grid2">
+      <div class="f"><input id="bd-e" type="email" autocomplete="off" placeholder="Email del Giornale"></div>
+      <div class="f"><input id="bd-p" type="password" autocomplete="off" placeholder="Password"></div></div>
+      <button class="btn ghost" id="bd-b">Collega</button></form>`;
+}
+
 /* ============ IMPOSTAZIONI ============ */
 function openSettings(){
   const acct = CLOUD && cloud.user
@@ -2029,6 +2118,8 @@ function openSettings(){
     <p class="note" style="margin:0 0 4px">Il tema vale per questo dispositivo.</p>
     <h2 class="sec">Dati e backup</h2>
     ${acct}
+    <h2 class="sec" style="margin-top:16px">Giornale di Bordo</h2>
+    <div id="bordo-box">${bordoBoxH = bordoBox()}</div>
     <h2 class="sec" style="margin-top:16px">Importa da CSV</h2>
     <div class="f"><label>Che dati sono?</label><select id="csv-k">
       <option value="mov">Movimenti (data;tipo;categoria;voce;importo;nota)</option>
@@ -2184,6 +2275,7 @@ async function boot(){
   cloud.db = firebase.firestore();
   try{ await cloud.db.enablePersistence({synchronizeTabs:true}); }catch(e){} // cache offline (cifrata come su server)
   firebase.auth().onAuthStateChanged(onUser);
+  if(bordoOn()) bordoAvvia().catch(e=>console.error(e));
 }
 // l'account si crea dalla console Firebase (Authentication → Utenti): l'app non ha la registrazione
 async function login(){
@@ -2315,9 +2407,11 @@ window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.b
 // app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
 function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + payAbbo() + settleCards() + autoStorico())) render(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && bordo.stato==='ok' && Date.now()-bordo.agg > 10*60*1000) bordoLeggi(); });
 setInterval(checkRate, 60*60*1000);
 
 if(!CLOUD) afterLoad();
+if(!CLOUD && bordoOn()) bordoAvvia().catch(e=>console.error(e));
 showTab('home');
 sizeSide();
 boot();

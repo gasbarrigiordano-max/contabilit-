@@ -106,3 +106,9 @@ Opzione "Sostituisci" per cancellare i dati di quel tipo prima di importare.
 - Nel foglio Investimenti la riga Criptovalute mostra -29% con 4.898 € investiti e 8.181 € attuali: la % del foglio non coincide, nell'app è ricalcolata.
 - Bondora risulta 4.148 € in Investimenti e 4.290 € in Situazione Finanziaria.
 - Nov/Dic 2026 contengono già 76,76 € di ricorrenti inseriti nel foglio.
+
+## Giornale di Bordo (app del gommone) — scadenze in sola lettura
+- Impostazioni → Giornale di Bordo: accesso con l'account del Giornale (una volta per dispositivo; flag `localStorage 'bilancio:bordo'`). Seconda app Firebase con nome `bordo` sul progetto `app-gommone` (config pubblica `BORDO_CFG` nell'HTML).
+- Legge `users/{uid}/data/{chiave}` (`{value: JSON}`): `auto_|scooter_|moto_` + `insurances|bollo|revisioni`, e per il gommone `insurances`, `carrelloInsurances`, `carrelloBollo`, `carrelloRevisioni`. Ogni voce `{scadenza, premio|importo, compagnia}` è un periodo pagato: la scadenza della più recente è il prossimo pagamento (importo = l'ultimo pagato, `?` se mai inserito); quelle già rinnovate risultano pagate (importo del rinnovo).
+- Le scadenze compaiono in Panoramica → Da pagare (nel loro mese) e in Abbonamenti → "Dal Giornale di Bordo". Restano solo in memoria: non entrano nei dati cifrati di Bilancio e nel Giornale non si scrive nulla. Rilettura all'avvio e al ritorno in primo piano (dopo 10 minuti) o con "Aggiorna".
+- Se la lettura dà "accesso negato", sono le regole Firestore del progetto `app-gommone` a non permetterla con quell'account.
