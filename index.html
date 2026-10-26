@@ -476,6 +476,8 @@ const fmtD = s => `${+s.slice(8,10)} ${M3[+s.slice(5,7)-1].toLowerCase()} ${s.sl
 const dueDate = (r,i) => r.first ? addMonths(r.first, i - r.fi) : null;
 const quota = (r,i) => i===r.n-1 ? round2(r.tot - r.rata*(r.n-1)) : r.rata;
 const pagate = r => Math.min(r.n, r.pre + r.done);
+// quota di capitale della rata i per un acquisto registrato nei movimenti (r.imp = importo dell'acquisto)
+const capRata = (r,i) => { const imp = r.imp ?? r.tot; return i===r.n-1 ? round2(imp - round2(imp/r.n)*(r.n-1)) : round2(imp/r.n); };
 const residue = r => r.n - pagate(r);
 const daPagare = r => round2(sum(Array.from({length:residue(r)}, (_,j)=>quota(r, pagate(r)+j))));
 const contoName = id => (S.conti.find(c=>c.id===id)||{}).n || '';
@@ -514,9 +516,13 @@ function payDueRate(){
       if(d>t) break;
       const id = `rt_${r.id}_${i}`, amt = quota(r,i);
       if(!S.tx.some(x=>x.id===id)){
-        // pagata con carta: diventa una spesa della carta e lascia il conto con l'estratto conto
-        S.tx.push({id, d, t:'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.carta?'':(r.conto||''), carta:r.carta||''});
+        // pagata con carta: diventa una spesa della carta e lascia il conto con l'estratto conto.
+        // Rata di un acquisto già registrato nei movimenti (r.tx): è solo un pagamento (t:'r'), la spesa c'è già;
+        // gli eventuali interessi (totale da rimborsare − importo) diventano una spesa a parte.
+        S.tx.push({id, d, t:r.tx?'r':'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.carta?'':(r.conto||''), carta:r.carta||''});
         const c = !r.carta && S.conti.find(c=>c.id===r.conto); if(c) c.v = round2(c.v - amt);
+        const int = r.tx ? round2(amt - capRata(r,i)) : 0;
+        if(int>0) S.tx.push({id:`rti_${r.id}_${i}`, d, t:'u', cat:'Rate', sub:'Interessi '+(r.tipo||''), amt:int, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, int:1});
       }
       r.done++; k++;
     }
@@ -623,7 +629,7 @@ function pagParse(v){
 // effetto di una spesa sul saldo del conto (sign -1 per annullarlo)
 function applyPag(t, sign=1){
   if(!t || !t.pag || !t.conto) return;
-  const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='u'?1:-1)*t.amt);
+  const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='e'?-1:1)*t.amt);
 }
 /* ---- Storico del patrimonio: una "foto" per mese ----
    {m:'YYYY-MM', d (giorno in cui è stata scattata), tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}
@@ -826,7 +832,7 @@ function renderMovList(){
     out += `<div class="tx" onclick="openTx('${t.id}')">
       <div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>
       <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
-      <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
+      <b class="mono ${t.t==='e'?'pos':t.t==='r'?'mut':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
   });
   $('mov-list').innerHTML = out;
 }
@@ -1142,7 +1148,7 @@ function renderRate(){
         ? `Prossima: <b style="color:var(--ink)">${fmtD(next(r))}</b> · ${eur(quota(r,pagate(r)))}`
         : `<span style="color:var(--warn)">Manca la data della prossima rata: tocca Modifica</span>`;
       return `<div class="card rate">
-        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${eur(r.rata)} × ${r.n}${daDove(r)?` · da ${esc(daDove(r))}`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
+        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${eur(r.rata)} × ${r.n}${daDove(r)?` · da ${esc(daDove(r))}`:''}${r.tx?` · acquisto del ${fmtD(r.acq)} nei movimenti`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
         <div class="bar" style="margin:4px 0 8px"><div style="width:${pagate(r)/r.n*100}%;background:var(--acc)"></div></div>
         <div class="row"><div class="note">${pagate(r)}/${r.n} pagate · ${info}${pm?`<br><span class="pos">✓ ${nome} pagata il ${fmtD(pm.d)}</span>`:''}</div>
           <button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button></div></div>`;
@@ -1155,7 +1161,7 @@ function renderRate(){
       ${html || '<div class="empty">Nessuna rata da pagare 🎉</div>'}
       <p class="note" style="margin-top:14px">Nel giorno della scadenza (o alla prima apertura dell'app dopo) la rata viene registrata tra le uscite, categoria Rate, e tolta dal conto scelto; se è pagata con una carta di credito finisce nel suo estratto conto.</p>`;
   }
-  const storico = S.tx.filter(t=>t.rid).sort((a,b)=>b.d.localeCompare(a.d) || b.id.localeCompare(a.id));
+  const storico = S.tx.filter(t=>t.rid && !t.int).sort((a,b)=>b.d.localeCompare(a.d) || b.id.localeCompare(a.id));
   const ultima = r => (storico.find(t=>t.rid===r.id)||{}).d;
   let cur='', righe='';
   storico.forEach(t=>{
@@ -1452,6 +1458,7 @@ function saveServizi(){
 function delServizio(i){ saveServizi(); S.servizi.splice(i,1); save(); openServizi(); }
 function delRata(id){
   if(!confirm('Eliminare questa rata? I pagamenti già registrati restano tra i movimenti.')) return;
+  S.tx.forEach(t=>{ if(t.rata===id) delete t.rata; });
   S.rate=S.rate.filter(x=>x.id!==id); save(); closeSheet(); render();
 }
 function addPL(){ const d=$('pl-d').value, v=num($('pl-v').value); if(!d||$('pl-v').value==='') return toast('Data e valore'); S.trading.push({id:uid(),d,v}); save(); ui.plMonth=+d.slice(5,7)-1; render(); }
@@ -1466,6 +1473,10 @@ function catMap(tipo){
 let draftT = 'u';
 function openTx(id, carta){
   const t = id ? S.tx.find(x=>x.id===id) : {t:carta?'u':draftT, d:today(), cat:'', sub:'', amt:'', note:'', carta:carta||''};
+  if(t.t==='r') return openPagRata(t);
+  const rp = t.rata ? S.rate.find(r=>r.id===t.rata) : null, lock = rp && rp.done>0;
+  const rateOk = !t.rid && !t.pf && !t.abid; // movimenti nati da rate, PagoFlex o abbonamenti non si rateizzano
+  const dec = x => x ? String(x).replace('.',',') : '';
   if(!id && !carta && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
     t.d = `${ui.year}-${String(ui.month+1).padStart(2,'0')}-01`;
   }
@@ -1476,22 +1487,59 @@ function openTx(id, carta){
     <input type="hidden" id="t-t" value="${t.t}">
     <div class="f"><input id="t-a" class="amt" inputmode="decimal" placeholder="0,00 €" value="${t.amt}"></div>
     <div class="grid2">
-      <div class="f"><label>Data</label><input type="date" id="t-d" value="${t.d}"></div>
+      <div class="f"><label>Data</label><input type="date" id="t-d" value="${t.d}" oninput="if(!$('t-r-d').dataset.t) $('t-r-d').value=addMonths(this.value||today(),1); txRatePrev()"></div>
       <div class="f"><label>Categoria</label><select id="t-c" onchange="catChange()"></select></div>
     </div>
     <div class="f" id="t-newc-w" style="display:none"><label>Nuova categoria</label><input id="t-newc" placeholder="es. Salute"></div>
     <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
     <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
-    <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label>Pagato con</label><select id="t-k" ${t.rid||t.pf?'disabled':''}>${pagOptions(id ? pagValue(t) : carta ? 'k:'+carta : ui.lastPag||'')}</select>
+    <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label id="t-k-l">${rp?'Rate pagate con':'Pagato con'}</label><select id="t-k" ${t.rid||t.pf?'disabled':''}>${pagOptions(rp ? (rp.carta ? 'k:'+rp.carta : rp.conto ? 'c:'+rp.conto : '') : id ? pagValue(t) : carta ? 'k:'+carta : ui.lastPag||'')}</select>
       ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con PagoFlex: per cambiarla annulla prima il PagoFlex nella sezione Carte.</p>':''}</div>
+    <div id="t-r-w" style="display:${t.t==='u'&&rateOk?'block':'none'}">
+      <label class="chk" style="justify-content:flex-start;margin:-2px 0 10px"><input type="checkbox" id="t-r" ${rp?'checked':''} ${lock?'disabled':''} onchange="txRate()"> Pagato a rate</label>
+      <div id="t-r-f" style="display:${rp?'block':'none'}">
+        <div class="grid2">
+          <div class="f"><label>Servizio</label><select id="t-r-s" data-prev="${esc(rp?rp.tipo:servizi()[0]||'PayPal')}" onchange="nuovoServizio(this)" ${lock?'disabled':''}>${[...new Set([...servizi(), rp&&rp.tipo].filter(Boolean))].map(x=>`<option ${rp&&x===rp.tipo?'selected':''}>${esc(x)}</option>`).join('')}<option value="__new">+ Nuovo servizio…</option></select></div>
+          <div class="f"><label>Numero rate</label><input id="t-r-n" inputmode="numeric" list="t-r-nl" value="${rp?rp.n:3}" oninput="txRatePrev()" ${lock?'disabled':''}><datalist id="t-r-nl"><option>3<option>4<option>6<option>10<option>12<option>24</datalist></div>
+          <div class="f"><label>Prima rata il</label><input type="date" id="t-r-d" value="${rp?dueDate(rp,0):addMonths(t.d,1)}" ${rp?'data-t="1"':''} oninput="this.dataset.t=1;txRatePrev()" ${lock?'disabled':''}></div>
+          <div class="f"><label>Totale da rimborsare (€)</label><input id="t-r-t" inputmode="decimal" value="${rp && rp.tot!==rp.imp ? dec(rp.tot) : ''}" placeholder="= importo" oninput="txRatePrev()" ${lock?'disabled':''}></div>
+        </div>
+        <p class="note" id="t-r-p" style="margin:-4px 0 12px"></p>
+        ${lock?'<p class="note" style="margin:-6px 0 12px">Ci sono già rate pagate: per cambiare il piano vai nella sezione Rate.</p>':''}
+      </div>
+    </div>
     <button class="btn" onclick="saveTx('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delTx('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
   fillCats(t.cat);
+  $('t-a').addEventListener('input', txRatePrev);
+  txRatePrev();
   if(!id) setTimeout(()=>$('t-a').focus(),120);
 }
+function txRate(){
+  const on = $('t-r').checked;
+  $('t-r-f').style.display = on ? 'block' : 'none';
+  $('t-k-l').textContent = on ? 'Rate pagate con' : 'Pagato con';
+  txRatePrev();
+}
+function txRatePrev(){
+  const el = $('t-r-p'); if(!el) return;
+  const amt = num($('t-a').value), n = parseInt($('t-r-n').value)||0, first = $('t-r-d').value, tot = num($('t-r-t').value) || amt;
+  if(!amt || n<2 || !first){ el.textContent = ''; return; }
+  const int = round2(tot - amt);
+  el.innerHTML = `${n} rate da <b class="mono" style="color:var(--ink)">${eur(round2(tot/n))}</b> · dal ${fmtD(first)} al ${fmtD(addMonths(first,n-1))}${int>0?` · interessi ${eur(int)}`:''}<br>La spesa di ${eur(amt)} vale alla data dell'acquisto; i soldi escono a ogni rata, non subito.`;
+}
+// pagamento di una rata collegata a un acquisto: non è una spesa, si gestisce dalla rata
+function openPagRata(t){
+  const r = S.rate.find(x=>x.id===t.rid);
+  sheet(`<h3>Pagamento rata</h3>
+    <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(t.note)}</b> · ${fmtD(t.d)} · ${eur(t.amt)}${pagLabel(t)?' · '+esc(pagLabel(t)):''}</p>
+    <p class="note" style="margin:0 0 14px">È il pagamento di una rata: la spesa è già registrata con l'acquisto, quindi qui non conta come uscita. Per cambiare importi o scadenze apri la rata.</p>
+    ${r?`<button class="btn" onclick="closeSheet();showTab('rate');openRata('${r.id}')">Apri la rata</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
+}
 function setTxT(v){
-  $('t-t').value=v; draftT=v; $('t-k-w').style.display = v==='u'?'block':'none';
+  $('t-t').value=v; draftT=v; $('t-k-w').style.display = v==='u'?'block':'none'; $('t-r-w').style.display = v==='u'?'block':'none';
   document.querySelectorAll('#tx-seg button').forEach(b=>b.classList.toggle('on',b.classList.contains(v)));
   fillCats('');
 }
@@ -1514,6 +1562,22 @@ function saveTx(id){
   if(!o.d) return toast('Inserisci la data');
   const old = id && S.tx.find(x=>x.id===id);
   if(!(old && (old.rid || old.pf))) Object.assign(o, o.t==='u' ? pagParse($('t-k').value) : {carta:'', pag:'', conto:''});
+  // pagato a rate: l'acquisto non muove soldi, li muovono le rate dal conto/carta di "Rate pagate con"
+  const rateOn = o.t==='u' && $('t-r') && $('t-r').checked && !(old && (old.rid || old.pf || old.abid));
+  const pianoOld = old && old.rata && S.rate.find(r=>r.id===old.rata);
+  let piano = null, pagRate = null;
+  if(rateOn){
+    pagRate = pagParse($('t-k').value);
+    if(!(pianoOld && pianoOld.done>0)){
+      const n = parseInt($('t-r-n').value)||0, first = $('t-r-d').value, tot = num($('t-r-t').value) || o.amt;
+      if(n<2) return toast('Numero di rate: almeno 2');
+      if(!first) return toast('Inserisci la data della prima rata');
+      if(tot < o.amt) return toast('Il totale da rimborsare non può essere minore dell\'importo');
+      if(first<today() && !(pianoOld && dueDate(pianoOld,0)===first) && !confirm(`La prima rata (${fmtD(first)}) è già passata: le rate fino a oggi verranno registrate subito come pagate e tolte da "${pagLabel(pagRate)||'nessun conto'}". Continuare?`)) return;
+      piano = {n, first, tot:round2(tot)};
+    }
+    Object.assign(o, {carta:'', pag:'', conto:''});
+  }
   // una spesa di un estratto conto già addebitato non può cambiare carta né importo: il conto è già stato scalato
   const chiuso = t => t && t.carta && (()=>{ const c=carte().find(x=>x.id===t.carta); return c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
   if(chiuso(old) && (o.carta!==old.carta || o.amt!==old.amt || o.d.slice(0,7)!==old.d.slice(0,7))) return toast('Estratto conto già addebitato: importo, mese e carta non si possono più cambiare');
@@ -1522,13 +1586,26 @@ function saveTx(id){
   // carta di debito / conto / contanti: l'importo esce subito dal conto (prima tolgo l'effetto della versione vecchia)
   if(old) applyPag(old, -1);
   if(old) Object.assign(old,o); else S.tx.push({id:uid(),...o});
-  applyPag(old || S.tx[S.tx.length-1]);
+  const tx = old || S.tx[S.tx.length-1];
+  applyPag(tx);
   if(o.t==='u' && !(old && (old.rid || old.pf))) ui.lastPag = $('t-k').value;
+  if(rateOn){
+    const pr = {...(piano ? {n:piano.n, tot:piano.tot, rata:round2(piano.tot/piano.n), first:piano.first, fi:0, pre:0, done:0, imp:o.amt, tipo:$('t-r-s').value} : {}),
+      prod:o.sub||o.cat, acq:o.d, conto:pagRate.conto, carta:pagRate.carta, tx:tx.id};
+    if(pianoOld) Object.assign(pianoOld, pr); else { const rid = uid(); S.rate.push({id:rid, ...pr}); tx.rata = rid; }
+    addServizio(pr.tipo || (pianoOld||{}).tipo);
+  } else if(pianoOld){ S.rate = S.rate.filter(r=>r!==pianoOld); delete tx.rata; } // spunta tolta (nessuna rata ancora pagata)
+  if(rateOn) payDueRate();
   save(); closeSheet(); render(); toast('Movimento salvato');
 }
 function delTx(id){
   const t = S.tx.find(x=>x.id===id);
   if(t.pf) return toast('Spesa con PagoFlex: annulla prima il PagoFlex nella sezione Carte');
+  const pr = t.rata && S.rate.find(r=>r.id===t.rata);
+  if(pr){
+    if(!confirm(pr.done ? `Questo acquisto è pagato a rate e ${pr.done} rate sono già state pagate. Eliminare acquisto e piano rate? I pagamenti già registrati restano.` : 'Eliminare l\'acquisto e il suo piano rate?')) return;
+    S.rate = S.rate.filter(r=>r!==pr);
+  }
   applyPag(t, -1); // restituisce l'importo al conto
   S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato');
 }
