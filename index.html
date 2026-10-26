@@ -303,15 +303,15 @@ nav button.on{color:var(--acc)}
 
   /* Panoramica: saldo | rate | liquidità+patrimonio, poi grafici affiancati */
   .home{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}
-  /* righe: saldo · rate · patrimonio / uscite per categoria · liquidità / entrate vs uscite */
-  .home{grid-template-areas:"top top pat" "cat cat liq" "bars bars bars"}
+  /* righe: saldo · rate · liquidità / uscite per categoria · patrimonio / entrate vs uscite */
+  .home{grid-template-areas:"top top liq" "cat cat pat" "bars bars bars"}
   .home .top2{grid-area:top;gap:16px}
   .home .sq,.home .rc{aspect-ratio:auto;min-height:230px}
   .home .sq>div>b{font-size:30px !important}
   .home .sq .io b{font-size:22px}
   .home .h-kpi{display:contents}
-  .home .k-pat{grid-area:pat;display:flex;flex-direction:column;justify-content:center}
-  .home .k-liq{grid-area:liq;margin-top:29px} /* allineata alla scheda sotto il titolo "Uscite per categoria" */
+  .home .k-liq{grid-area:liq;display:flex;flex-direction:column;justify-content:center}
+  .home .k-pat{grid-area:pat;margin-top:29px;display:flex;flex-direction:column;justify-content:center} /* allineata alla scheda sotto il titolo "Uscite per categoria" */
   .home .k-ring svg{width:84px;height:84px}
   .home .h-cat{grid-area:cat}
   .home .h-bars{grid-area:bars}
