@@ -283,12 +283,14 @@ nav button.on{color:var(--acc)}
 
 /* ===== schermo largo: iPad in orizzontale, Mac ===== */
 @media (min-width:900px){
-  /* menu laterale largo quanto la voce più lunga: --side è misurata dallo script */
-  body{max-width:none;margin:0;padding:0 0 40px var(--side,170px)}
-  .mast,main{max-width:1200px;margin:0 auto}
+  /* due colonne: menu laterale largo quanto la voce più lunga + contenuto. Il menu è nel flusso della pagina,
+     quindi il contenuto parte sempre dopo di lui (anche quando il carattere arriva in ritardo e il menu si allarga) */
+  body{max-width:none;margin:0;padding:0 0 40px;display:grid;grid-template-columns:max-content minmax(0,1fr);grid-template-rows:auto 1fr;align-items:start}
+  .mast,main{max-width:1200px;margin:0 auto;width:100%;grid-column:2;box-sizing:border-box}
+  .mast{grid-row:1} main{grid-row:2}
   .mast{padding:16px 28px 12px;border-bottom:none}
   .view{padding:12px 28px 28px}
-  nav{left:0;top:0;bottom:0;transform:none;width:max-content;max-width:none;flex-direction:column;gap:4px;border:none;border-radius:0;box-shadow:none;
+  nav{position:sticky;grid-column:1;grid-row:1 / span 2;align-self:start;height:100vh;left:auto;top:0;bottom:auto;transform:none;width:max-content;max-width:none;flex-direction:column;gap:4px;border:none;border-radius:0;box-shadow:none;
     padding:calc(22px + var(--sat)) 10px 22px;border-top:none;border-right:1px solid var(--line);background:var(--panel)}
   nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:10px;font-size:14px;padding:10px 12px;border-radius:10px}
   nav button:hover{color:var(--ink2)}
@@ -867,7 +869,7 @@ const WIDE = matchMedia('(min-width:900px)');
 // passando da stretto a largo (rotazione iPad, finestra Mac) la voce attiva cambia posto
 // larghezza reale del menu laterale (dipende dal carattere): la uso per spostare il contenuto
 function sizeSide(){ if(WIDE.matches) document.documentElement.style.setProperty('--side', Math.ceil($('nav').getBoundingClientRect().width)+'px'); }
-if(document.fonts) document.fonts.ready.then(sizeSide);
+if(window.ResizeObserver) new ResizeObserver(sizeSide).observe($('nav'));
 WIDE.addEventListener('change', ()=>setTimeout(sizeSide));
 WIDE.addEventListener('change', ()=>showTab(ui.tab==='altro' && SUB.includes(ui.altro) ? ui.altro : ui.tab));
 
