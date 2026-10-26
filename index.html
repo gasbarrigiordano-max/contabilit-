@@ -140,6 +140,8 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .itiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .itile{position:relative;overflow:hidden;aspect-ratio:1/1;border-radius:var(--r);border:1px solid var(--line);background:var(--panel);padding:0;text-align:left;cursor:pointer;color:var(--ink);
   box-shadow:0 8px 24px rgba(0,0,0,.10);transition:transform .15s, box-shadow .15s}
+/* Safari non ritaglia agli angoli arrotondati un elemento con filter: il ritaglio esplicito sì */
+.itile-clip{position:absolute;inset:0;overflow:hidden;border-radius:inherit;clip-path:inset(0 round var(--r));-webkit-mask-image:-webkit-radial-gradient(white,black)}
 .itile-bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(12px) saturate(1.4);opacity:.8}
 .itile-in{position:absolute;inset:0;display:flex;flex-direction:column;padding:14px;background:linear-gradient(180deg,var(--panel) 0%,transparent 45%,transparent 55%,var(--panel) 100%)}
 .itile-h{display:flex;align-items:center;gap:8px}
@@ -1470,7 +1472,7 @@ function renderInv(){
     const {its, vi, ve, haE, haI} = invTot(k), p = invPct(ve,vi);
     const nomi = its.map(i=>S.inv[i].n.replace(/^- /,'')).join(', ');
     return `<button class="itile" onclick="openInvTipo('${k}')">
-      <img class="itile-bg" src="${LOGHI[logo]}" alt=""><span class="itile-in">
+      <span class="itile-clip"><img class="itile-bg" src="${LOGHI[logo]}" alt=""></span><span class="itile-in">
         <span class="itile-h"><img class="logo" src="${LOGHI[logo]}" alt=""><small>${nome}</small></span>
         <b class="mono">${haE ? eurI(ve) : '–'}</b>
         <small class="itile-s">${its.length ? esc(nomi) : 'nessuna voce'}</small>
