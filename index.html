@@ -7,7 +7,7 @@
 <script>
   let t = 'carta'; try{ t = localStorage.getItem('bilancio:tema') || 'carta'; }catch(e){}
   document.documentElement.dataset.theme = t;
-  if(t==='scuro') document.querySelector('meta[name=theme-color]').content = '#0b0f0e';
+  if(t==='scuro') document.querySelector('meta[name=theme-color]').content = '#1e2629';
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Bilancio — Finanze personali</title>
@@ -26,15 +26,15 @@
   --r:14px;
   --sat:env(safe-area-inset-top); --sab:env(safe-area-inset-bottom);
 }
-/* tema Scuro (quello di prima): grafite e verde */
+/* tema scuro Ardesia: grafite morbida e verde brillante */
 :root[data-theme="scuro"]{
   color-scheme:dark;
-  --bg:#0b0f0e; --panel:#121917; --panel2:#18211e; --line:#233029;
-  --ink:#e8f1ec; --ink2:#9db0a6; --ink3:#62756b;
-  --acc:#34d399; --acc-dim:rgba(52,211,153,.12); --on-acc:#04130c; --acc-shadow:rgba(52,211,153,.35);
-  --neg:#fb7185; --neg-line:#4a2430; --warn:#fbbf24; --blue:#60a5fa;
-  --glass:rgba(11,15,14,.92); --sheet:#0f1513; --overlay:rgba(0,0,0,.6); --track:rgba(0,0,0,.25); --sub-bg:rgba(255,255,255,.015);
-  --hero-bg:linear-gradient(160deg,#143028,#0f1a17 60%); --hero-line:#1f4a3b; --hero-ink:#7fcfae; --gate-glow:#143028;
+  --bg:#1e2629; --panel:#273235; --panel2:#2f3b3f; --line:#3a474b;
+  --ink:#eef3f1; --ink2:#b3c1bb; --ink3:#84928c;
+  --acc:#4ade80; --acc-dim:rgba(74,222,128,.14); --on-acc:#0f1f15; --acc-shadow:rgba(74,222,128,.30);
+  --neg:#fb7185; --neg-line:#5a3440; --warn:#fbbf24; --blue:#60a5fa;
+  --glass:rgba(30,38,41,.92); --sheet:#232d30; --overlay:rgba(0,0,0,.5); --track:rgba(0,0,0,.22); --sub-bg:rgba(255,255,255,.02);
+  --hero-bg:linear-gradient(160deg,#2f4d44,#273235 65%); --hero-line:#3f6357; --hero-ink:#a7e9c3; --gate-glow:#2f4d44;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Manrope',system-ui,sans-serif;font-size:14px}
@@ -459,7 +459,7 @@ const store = CLOUD ? cloud : localStore;
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const M3 = MESI.map(m=>m.slice(0,3));
 const PAL_TEMA = {
-  scuro: ['#34d399','#60a5fa','#fbbf24','#f472b6','#a78bfa','#22d3ee','#fb923c','#a3e635','#94a3b8','#f87171'],
+  scuro: ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'],
   carta: ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948']
 };
 const tema = () => document.documentElement.dataset.theme==='scuro' ? 'scuro' : 'carta';
@@ -1651,7 +1651,7 @@ function openSettings(){
     : `<p class="note">I dati restano solo in questo browser. Configura Firebase (vedi HANDOFF.md) per sincronizzarli cifrati.</p>`;
   sheet(`<h3>Impostazioni</h3>
     <h2 class="sec" style="margin-top:4px">Tema</h2>
-    <div class="seg" style="margin-bottom:6px">${[['carta','Carta (chiaro)'],['scuro','Scuro']].map(([v,l])=>`<button class="${tema()===v?'on':''}" onclick="setTema('${v}')">${l}</button>`).join('')}</div>
+    <div class="seg" style="margin-bottom:6px">${[['carta','Carta (chiaro)'],['scuro','Ardesia (scuro)']].map(([v,l])=>`<button class="${tema()===v?'on':''}" onclick="setTema('${v}')">${l}</button>`).join('')}</div>
     <p class="note" style="margin:0 0 4px">Il tema vale per questo dispositivo.</p>
     <h2 class="sec">Dati e backup</h2>
     ${acct}
