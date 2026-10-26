@@ -670,6 +670,7 @@ function migrateRata(r){
 }
 // paga le rate scadute (oggi compreso): uscita nei movimenti, importo tolto dal conto, rata segnata pagata.
 // L'id del movimento è fisso per rata, così due dispositivi non la registrano due volte.
+const quotaRata = (r, amt) => round2(amt * r.quota / r.tot);
 function payDueRate(){
   const t = today(); let k = 0;
   S.rate.forEach(r=>{
@@ -681,7 +682,8 @@ function payDueRate(){
         // pagata con carta: diventa una spesa della carta e lascia il conto con l'estratto conto.
         // Rata di un acquisto già registrato nei movimenti (r.tx): è solo un pagamento (t:'r'), la spesa c'è già;
         // gli eventuali interessi (totale da rimborsare − importo) diventano una spesa a parte.
-        S.tx.push({id, d, t:r.tx?'r':'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.carta?'':(r.conto||''), carta:r.carta||''});
+        S.tx.push({id, d, t:r.tx?'r':'u', cat:'Rate', sub:r.tipo||'Rate', amt, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, conto:r.carta?'':(r.conto||''), carta:r.carta||'',
+          ...(!r.tx && r.quota!=null ? {quota:quotaRata(r, amt)} : {})}); // acquisto di gruppo: nelle spese la mia parte della rata
         const c = !r.carta && S.conti.find(c=>c.id===r.conto); if(c) c.v = round2(c.v - amt);
         const int = r.tx ? round2(amt - capRata(r,i)) : 0;
         if(int>0) S.tx.push({id:`rti_${r.id}_${i}`, d, t:'u', cat:'Rate', sub:'Interessi '+(r.tipo||''), amt:int, note:`${r.prod||r.tipo} · rata ${i+1}/${r.n}`, rid:r.id, int:1});
@@ -892,7 +894,14 @@ function periodLabel(){ return ui.month==='all' ? `Anno ${ui.year}` : `${MESI[ui
    movimenti t:'rb' {gid: acquisto, conto}: entrano nel conto ma non sono entrate. */
 const spesa = t => t.quota!=null ? t.quota : t.amt;
 const rimborsi = t => S.tx.filter(x=>x.t==='rb' && x.gid===t.id);
-const daRicevere = t => t.quota!=null ? round2(t.amt - t.quota - sum(rimborsi(t).map(x=>x.amt))) : 0;
+// vale per un movimento (amt) e per un piano rate creato dalla sezione Rate (tot)
+const daRicevere = t => t.quota!=null ? round2((t.tot ?? t.amt) - t.quota - sum(rimborsi(t).map(x=>x.amt))) : 0;
+function gruppo(gid){
+  const t = S.tx.find(x=>x.id===gid);
+  if(t) return {g:t, tot:t.amt, nome:t.sub||t.cat, cat:t.cat, sub:t.sub, torna:()=>openTx(gid)};
+  const r = S.rate.find(x=>x.id===gid);
+  return {g:r, tot:r.tot, nome:r.prod||r.tipo, cat:'Rate', sub:r.prod||r.tipo||'Rate', torna:()=>openRata(gid)};
+}
 function groupBy(arr, fn){ const m = new Map(); arr.forEach(x=>{ const k=fn(x); m.set(k,(m.get(k)||0)+spesa(x)); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
 
 const WIDE = matchMedia('(min-width:900px)');
@@ -1409,7 +1418,7 @@ function renderRate(){
         ? `Prossima: <b style="color:var(--ink)">${fmtD(next(r))}</b> · ${eur(quota(r,pagate(r)))}`
         : `<span style="color:var(--warn)">Manca la data della prossima rata: tocca Modifica</span>`;
       return `<div class="card rate">
-        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${eur(r.rata)} × ${r.n}${daDove(r)?` · da ${esc(daDove(r))}`:''}${r.tx?` · acquisto del ${fmtD(r.acq)} nei movimenti`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
+        <div class="row"><div style="min-width:0"><b>${titolo(r)}</b><div class="note">${eur(r.rata)} × ${r.n}${daDove(r)?` · da ${esc(daDove(r))}`:''}${r.tx?` · acquisto del ${fmtD(r.acq)} nei movimenti`:''}${r.quota!=null?`<br>👥 tua quota ${eur(r.quota)} · ${daRicevere(r)>0?`da ricevere ${eur(daRicevere(r))}`:'rimborsato'}`:''}</div></div><b class="mono">${eur(daPagare(r))}</b></div>
         <div class="bar" style="margin:4px 0 8px"><div style="width:${pagate(r)/r.n*100}%;background:var(--acc)"></div></div>
         <div class="row"><div class="note">${pagate(r)}/${r.n} pagate · ${info}${pm?`<br><span class="pos">✓ ${nome} pagata il ${fmtD(pm.d)}</span>`:''}</div>
           <button class="btn sm ghost" onclick="openRata('${r.id}')">Modifica</button></div></div>`;
@@ -1435,7 +1444,9 @@ function renderRate(){
       <span class="pill">✓ saldata</span></div>`).join('') || '<div class="empty">Nessuna rata conclusa</div>'}</div>
     <h2 class="sec">Pagamenti registrati</h2>${righe || '<div class="empty">Ancora nessun pagamento registrato dall\'app</div>'}`;
 }
+let rataAperta = '';
 function openRata(id){
+  rataAperta = id || '';
   const r = id ? S.rate.find(x=>x.id===id) : null;
   const acq = r ? (r.acq||'') : today();
   const dec = x => x ? String(x).replace('.',',') : ''; // 229.5 → 229,5 nel campo
@@ -1457,6 +1468,13 @@ function openRata(id){
       <div class="f"><label>Pagata da</label><select id="r-c">${conti}</select></div>
     </div>
     <p class="note" id="r-prev" style="margin:0 0 12px"></p>
+    ${r && r.tx ? '' : `<label class="chk" style="justify-content:flex-start;margin:-2px 0 10px"><input type="checkbox" id="r-g" ${r&&r.quota!=null?'checked':''} onchange="$('r-g-f').style.display=this.checked?'block':'none';rataPrev()"> Acquisto di gruppo</label>
+    <div id="r-g-f" style="display:${r&&r.quota!=null?'block':'none'}">
+      <div class="f"><label>La mia quota (€)</label><input id="r-q" inputmode="decimal" value="${r&&r.quota!=null?dec(r.quota)||'0':''}" placeholder="0,00 €" oninput="rataPrev()"></div>
+      <p class="note" id="r-g-p" style="margin:-4px 0 12px"></p>
+      ${r && r.quota!=null ? `${rimborsi(r).map(x=>`<div class="tx" onclick="openRimb('${r.id}','${x.id}')"><div class="mid"><b>Rimborso ricevuto</b><small>${esc([fmtD(x.d), pagLabel(x), x.note].filter(Boolean).join(' · '))}</small></div><b class="mono mut">+${eur(x.amt)}</b></div>`).join('')}
+        <button class="btn sm ghost" style="margin:0 0 12px" onclick="openRimb('${r.id}')">+ Rimborso ricevuto</button>` : ''}
+    </div>`}
     <p class="note" style="margin:-4px 0 12px">Le rate successive scadono ogni mese nello stesso giorno. Se scegli una carta di credito, la rata finisce nel suo estratto conto e lascia il conto della carta il giorno dell'addebito.</p>
     <button class="btn" onclick="saveRata('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delRata('${id}')">Elimina</button>`:''}
@@ -1472,7 +1490,9 @@ function rataForm(){
   return {tot:num($('r-tot').value), n, res: r==='' ? n : parseInt(r), next:$('r-next').value};
 }
 function rataPrev(){
-  const {tot,n,res,next} = rataForm(), el = $('r-prev');
+  const {tot,n,res,next} = rataForm(), el = $('r-prev'), g = $('r-g-p');
+  if(g) g.innerHTML = tot && n && $('r-q').value.trim() ? (()=>{ const q = num($('r-q').value), pr = rataAperta && S.rate.find(x=>x.id===rataAperta), ric = pr ? sum(rimborsi(pr).map(x=>x.amt)) : 0;
+    return `Dal conto o dalla carta escono le rate intere; nelle spese ogni rata conta per la tua parte (<b class="mono" style="color:var(--ink)">${eur(round2(q/n))}</b>). Gli altri ti devono <b class="mono" style="color:var(--ink)">${eur(round2(tot-q))}</b>${ric?` · già ricevuti ${eur(ric)}`:''}.`; })() : '';
   if(!tot || !n){ el.textContent = ''; return; }
   const rata = round2(tot/n);
   el.innerHTML = `Rata <b class="mono" style="color:var(--ink)">${eur(rata)}</b> × ${n}` +
@@ -1491,7 +1511,16 @@ function saveRata(id){
   const o = {tipo:$('r-t').value.trim()||'PayPal', prod:$('r-p').value.trim(), acq:$('r-acq').value||null,
     tot:round2(tot), n, rata:round2(tot/n), pre, done, first: res ? next : (old&&old.first)||null, fi: pre+done,
     conto: $('r-c').value.startsWith('c:') ? $('r-c').value.slice(2) : '', carta: $('r-c').value.startsWith('k:') ? $('r-c').value.slice(2) : ''};
-  if(old) Object.assign(old,o); else S.rate.push({id:uid(),...o});
+  const gr = $('r-g') && $('r-g').checked;
+  if(gr){
+    if($('r-q').value.trim()==='') return toast('Inserisci la tua quota');
+    o.quota = round2(num($('r-q').value));
+    if(o.quota<0 || o.quota>=o.tot) return toast('La tua quota deve essere minore dell\'importo totale');
+  } else if(old && rimborsi(old).length) return toast('Ci sono rimborsi ricevuti: eliminali prima di togliere "Acquisto di gruppo"');
+  if(old){ Object.assign(old,o); if(!gr) delete old.quota; } else S.rate.push({id:uid(),...o});
+  // rate già pagate: la loro parte nelle spese segue la quota
+  const pr = old || S.rate[S.rate.length-1];
+  if(!pr.tx) S.tx.filter(t=>t.rid===pr.id && t.t==='u' && !t.int).forEach(t=>{ if(pr.quota!=null) t.quota = quotaRata(pr, t.amt); else delete t.quota; });
   addServizio(o.tipo);
   save(); closeSheet(); payDueRate(); render(); toast('Salvato');
 }
@@ -1904,8 +1933,10 @@ function saveServizi(){
 }
 function delServizio(i){ saveServizi(); S.servizi.splice(i,1); save(); openServizi(); }
 function delRata(id){
-  if(!confirm('Eliminare questa rata? I pagamenti già registrati restano tra i movimenti.')) return;
+  const rb = rimborsi({id});
+  if(!confirm('Eliminare questa rata? I pagamenti già registrati restano tra i movimenti.' + (rb.length ? `\n\nVengono eliminati anche i ${rb.length} rimborsi ricevuti (${eur(sum(rb.map(x=>x.amt)))}), tolti dai conti.` : ''))) return;
   S.tx.forEach(t=>{ if(t.rata===id) delete t.rata; });
+  rb.forEach(x=>applyPag(x, -1)); S.tx = S.tx.filter(x=>x.gid!==id);
   S.rate=S.rate.filter(x=>x.id!==id); save(); closeSheet(); render();
 }
 function addPL(){ const d=$('pl-d').value, v=num($('pl-v').value); if(!d||$('pl-v').value==='') return toast('Data e valore'); S.trading.push({id:uid(),d,v}); save(); ui.plMonth=+d.slice(5,7)-1; render(); }
@@ -2085,10 +2116,10 @@ function delTx(id){
 }
 // rimborso ricevuto per un acquisto di gruppo: entra nel conto scelto, non è un'entrata
 function openRimb(gid, id){
-  const g = S.tx.find(x=>x.id===gid), x = id ? S.tx.find(y=>y.id===id) : {amt:daRicevere(g), d:today(), conto:'', note:''};
+  const G = gruppo(gid), g = G.g, x = id ? S.tx.find(y=>y.id===id) : {amt:daRicevere(g), d:today(), conto:'', note:''};
   const conti = S.conti.filter(c=>c.g!=='Investimenti');
   sheet(`<h3>${id?'Rimborso ricevuto':'Nuovo rimborso'}</h3>
-    <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(g.sub||g.cat)}</b> · pagati ${eur(g.amt)} · tua quota ${eur(g.quota)} · da ricevere ${eur(daRicevere(g) + (id ? x.amt : 0))}</p>
+    <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(G.nome)}</b> · pagati ${eur(G.tot)} · tua quota ${eur(g.quota)} · da ricevere ${eur(daRicevere(g) + (id ? x.amt : 0))}</p>
     <div class="f"><input id="rb-a" class="amt" inputmode="decimal" placeholder="0,00 €" value="${x.amt>0?String(x.amt).replace('.',','):''}"></div>
     <div class="grid2">
       <div class="f"><label>Data</label><input type="date" id="rb-d" value="${x.d}"></div>
@@ -2097,20 +2128,20 @@ function openRimb(gid, id){
     <div class="f"><label>Da chi / nota</label><input id="rb-n" value="${esc(x.note)}" placeholder="facoltativa"></div>
     <button class="btn" onclick="saveRimb('${gid}','${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delRimb('${gid}','${id}')">Elimina</button>`:''}
-    <button class="btn ghost" style="margin-top:8px" onclick="openTx('${gid}')">Annulla</button>`);
+    <button class="btn ghost" style="margin-top:8px" onclick="gruppo('${gid}').torna()">Annulla</button>`);
 }
 function saveRimb(gid, id){
-  const g = S.tx.find(x=>x.id===gid), amt = round2(num($('rb-a').value)), d = $('rb-d').value, cid = $('rb-c').value;
+  const G = gruppo(gid), amt = round2(num($('rb-a').value)), d = $('rb-d').value, cid = $('rb-c').value;
   if(!amt) return toast('Inserisci l\'importo'); if(!d) return toast('Inserisci la data');
   const c = S.conti.find(x=>x.id===cid);
-  const o = {d, t:'rb', gid, cat:g.cat, sub:g.sub, amt, note:$('rb-n').value.trim(), conto:cid, pag: c ? (c.g==='Cash'?'contanti':'conto') : '', carta:''};
+  const o = {d, t:'rb', gid, cat:G.cat, sub:G.sub, amt, note:$('rb-n').value.trim(), conto:cid, pag: c ? (c.g==='Cash'?'contanti':'conto') : '', carta:''};
   const old = id && S.tx.find(x=>x.id===id);
   if(old){ applyPag(old, -1); Object.assign(old, o); applyPag(old); } else { const t = {id:uid(), ...o}; S.tx.push(t); applyPag(t); }
-  save(); render(); openTx(gid); toast('Rimborso salvato');
+  save(); render(); G.torna(); toast('Rimborso salvato');
 }
 function delRimb(gid, id){
   const x = S.tx.find(y=>y.id===id); applyPag(x, -1);
-  S.tx = S.tx.filter(y=>y.id!==id); save(); render(); openTx(gid);
+  S.tx = S.tx.filter(y=>y.id!==id); save(); render(); gruppo(gid).torna();
 }
 
 /* ============ GIORNALE DI BORDO (app del gommone): scadenze di auto, scooter, moto, gommone e carrello ============
