@@ -981,20 +981,31 @@ function kpiConti(liq, patr){
         <div><span><i style="background:var(--acc)"></i><b class="mono">${Math.round(pl*100)}%</b> liquidità</span><span><i style="background:var(--blue)"></i><b class="mono">${100-Math.round(pl*100)}%</b> investito</span></div></div></div>`;
 }
 
-// rate da pagare nel mese corrente, raggruppate per metodo (PayPal, Klarna…)
+// spese fisse del mese ym (abbonamenti, bollo, assicurazione…): pagate = già registrate, da pagare = scadenze future
+function abboDelMese(ym){
+  const out = S.tx.filter(t=>t.abid && t.d.slice(0,7)===ym).map(t=>({a:abbo().find(a=>a.id===t.abid)||{n:t.sub, freq:1}, d:t.d, amt:t.amt, paid:true}));
+  abbo().forEach(a=>{ if(a.attivo===false || !a.next) return;
+    for(let d=a.next; d.slice(0,7)<=ym; d=addMonths(d, a.freq>0 ? a.freq : 1)) if(d.slice(0,7)===ym) out.push({a, d, amt:a.costo, paid:false}); });
+  return out;
+}
+// mese mostrato in Panoramica (con "Anno" il mese corrente)
+const meseVista = () => ui.month==='all' ? thisMonth() : `${ui.year}-${String(ui.month+1).padStart(2,'0')}`;
+// da pagare nel mese scelto: rate per metodo (PayPal, Klarna…), abbonamenti mensili insieme, le altre spese fisse una per una
 function rateCard(){
-  const list = rateDelMese(thisMonth());
+  const ym = meseVista();
+  const list = [...rateDelMese(ym).map(x=>({...x, k:x.r.tipo||'Altro'})),
+    ...abboDelMese(ym).map(x=>({...x, k:x.a.freq===1 ? 'Abbonamenti' : x.a.n}))];
   const by = new Map();
-  list.forEach(x=>{ const k=x.r.tipo||'Altro'; const g=by.get(k)||{due:0,paid:0}; g[x.paid?'paid':'due']+=x.amt; by.set(k,g); });
+  list.forEach(x=>{ const g=by.get(x.k)||{due:0,paid:0}; g[x.paid?'paid':'due']+=x.amt; by.set(x.k,g); });
   const groups = [...by.entries()].sort((a,b)=>(b[1].due-a[1].due) || (b[1].paid-a[1].paid)); // prima quelle da pagare
   const due = sum(list.filter(x=>!x.paid).map(x=>x.amt)), paid = sum(list.filter(x=>x.paid).map(x=>x.amt));
   const rows = WIDE.matches ? 8 : paid ? 3 : 4, MAX = groups.length>rows ? rows-1 : rows; // righe che stanno nel quadrato
   const amt = v => v ? `<b class="mono">${eur(v)}</b>` : `<b class="ok">✓</b>`;
   const lines = groups.slice(0,MAX).map(([k,g])=>`<div><span>${esc(k)}</span>${amt(g.due)}</div>`).join('')
     + (groups.length>MAX ? `<div><span>+ altri ${groups.length-MAX}</span>${amt(sum(groups.slice(MAX).map(([k,g])=>g.due)))}</div>` : '');
-  return `<div class="card kpi rc" onclick="showTab('rate')"><small>Rate da pagare · ${M3[now.getMonth()]}</small>
+  return `<div class="card kpi rc" onclick="showTab('rate')"><small>Da pagare · ${M3[+ym.slice(5)-1]}${ym.slice(0,4)!=now.getFullYear()?' '+ym.slice(0,4):''}</small>
     ${list.length ? `<b class="mono ${due?'neg':'pos'}">${due?eur(due):'Tutto pagato'}</b><div class="rl">${lines}</div>
-      ${paid?`<div class="note">Già pagate ${eur(paid)}</div>`:''}` : `<div class="empty" style="padding:18px 0 0">Nessuna rata questo mese</div>`}</div>`;
+      ${paid?`<div class="note">Già pagato ${eur(paid)}</div>`:''}` : `<div class="empty" style="padding:18px 0 0">Niente da pagare a ${MESI[+ym.slice(5)-1].toLowerCase()}</div>`}</div>`;
 }
 
 /* ---- Movimenti ---- */
