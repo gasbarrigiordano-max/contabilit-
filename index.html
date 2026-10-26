@@ -798,7 +798,7 @@ function pagParse(v){
 // effetto di una spesa sul saldo del conto (sign -1 per annullarlo)
 function applyPag(t, sign=1){
   if(!t || !t.pag || !t.conto) return;
-  const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='e'?-1:1)*t.amt);
+  const c = S.conti.find(x=>x.id===t.conto); if(c) c.v = round2(c.v - sign*(t.t==='e'||t.t==='rb'?-1:1)*t.amt);
 }
 /* ---- Storico del patrimonio: una "foto" per mese ----
    {m:'YYYY-MM', d (giorno in cui è stata scattata), tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}
@@ -887,7 +887,13 @@ const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
 function periodTx(){ return S.tx.filter(inPeriod); }
 function periodLabel(){ return ui.month==='all' ? `Anno ${ui.year}` : `${MESI[ui.month]} ${ui.year}`; }
-function groupBy(arr, fn){ const m = new Map(); arr.forEach(x=>{ const k=fn(x); m.set(k,(m.get(k)||0)+x.amt); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
+/* Acquisto di gruppo: t.quota = la mia parte. t.amt resta quanto ho pagato (conto, carta, rate si muovono su quello),
+   le statistiche (Panoramica, Mensile, categorie) contano spesa(t). I soldi che gli altri mi restituiscono sono
+   movimenti t:'rb' {gid: acquisto, conto}: entrano nel conto ma non sono entrate. */
+const spesa = t => t.quota!=null ? t.quota : t.amt;
+const rimborsi = t => S.tx.filter(x=>x.t==='rb' && x.gid===t.id);
+const daRicevere = t => t.quota!=null ? round2(t.amt - t.quota - sum(rimborsi(t).map(x=>x.amt))) : 0;
+function groupBy(arr, fn){ const m = new Map(); arr.forEach(x=>{ const k=fn(x); m.set(k,(m.get(k)||0)+spesa(x)); }); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
 
 const WIDE = matchMedia('(min-width:900px)');
 // passando da stretto a largo (rotazione iPad, finestra Mac) la voce attiva cambia posto
@@ -942,11 +948,11 @@ function donut(data){
 }
 function renderHome(){
   const p = periodTx(); const U = p.filter(t=>t.t==='u'), E = p.filter(t=>t.t==='e');
-  const tu = sum(U.map(t=>t.amt)), te = sum(E.map(t=>t.amt)), saldo = te-tu;
+  const tu = sum(U.map(spesa)), te = sum(E.map(t=>t.amt)), saldo = te-tu;
   let byCat = groupBy(U, t=>t.cat);
   if(byCat.length > PAL.length) byCat = [...byCat.slice(0, PAL.length-1), ['Altre', sum(byCat.slice(PAL.length-1).map(x=>x[1]))]];
   const yU = Array(12).fill(0), yE = Array(12).fill(0);
-  S.tx.filter(t=>txYear(t)===ui.year).forEach(t=>{ (t.t==='u'?yU:yE)[txMonth(t)] += t.amt; });
+  S.tx.filter(t=>txYear(t)===ui.year && (t.t==='u' || t.t==='e')).forEach(t=>{ (t.t==='u'?yU:yE)[txMonth(t)] += spesa(t); });
   const mx = Math.max(1,...yU,...yE);
   const bars = M3.map((m,i)=>`<div style="flex:1;text-align:center;cursor:pointer" onclick="setMonth(${i})">
       <div style="display:flex;gap:2px;align-items:flex-end;height:90px;justify-content:center">
@@ -1033,7 +1039,7 @@ function renderMov(){
   const q = ui.q.trim().toLowerCase();
   if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+t.note).toLowerCase().includes(q));
   list.sort((a,b)=> b.d.localeCompare(a.d) || a.cat.localeCompare(b.cat));
-  const tu = sum(list.filter(t=>t.t==='u').map(t=>t.amt)), te = sum(list.filter(t=>t.t==='e').map(t=>t.amt));
+  const tu = sum(list.filter(t=>t.t==='u').map(spesa)), te = sum(list.filter(t=>t.t==='e').map(t=>t.amt));
   let html = `<div class="seg">
       ${[['all','Tutti',''],['u','Uscite','u'],['e','Entrate','e']].map(([v,l,c])=>`<button class="${c} ${ui.tipo===v?'on':''}" onclick="ui.tipo='${v}';render()">${l}</button>`).join('')}
     </div>
@@ -1058,8 +1064,8 @@ function renderMovList(){
     const c = colorOf(t.cat);
     out += `<div class="tx" onclick="openTx('${t.id}')">
       ${t.abid && SRV_RE.some(([k,re])=>re.test(t.sub)) ? srvIcon(t.sub, 34) : `<div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>`}
-      <div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small></div>
-      <b class="mono ${t.t==='e'?'pos':t.t==='r'?'mut':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`;
+      <div class="mid"><b>${t.t==='rb'?'Rimborso · ':''}${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small>${t.quota!=null?`<small>👥 pagati ${eur(t.amt)} · ${daRicevere(t)>0?`da ricevere ${eur(daRicevere(t))}`:'rimborsato'}</small>`:''}</div>
+      <b class="mono ${t.t==='e'?'pos':t.t==='r'||t.t==='rb'?'mut':''}">${t.t==='e'||t.t==='rb'?'+':'-'}${eur(spesa(t))}</b></div>`;
   });
   $('mov-list').innerHTML = out;
 }
@@ -1076,10 +1082,10 @@ function renderMx(){
   const cats = new Map();
   tx.forEach(t=>{
     if(!cats.has(t.cat)) cats.set(t.cat,{m:Array(12).fill(0),subs:new Map()});
-    const c = cats.get(t.cat); c.m[txMonth(t)]+=t.amt;
+    const c = cats.get(t.cat); c.m[txMonth(t)]+=spesa(t);
     const sk = t.sub||'—';
     if(!c.subs.has(sk)) c.subs.set(sk,Array(12).fill(0));
-    c.subs.get(sk)[txMonth(t)]+=t.amt;
+    c.subs.get(sk)[txMonth(t)]+=spesa(t);
   });
   const pers = (S.opz||{}).mxSort==='pers', ord = mxOrdine(tipo);
   const order = ordina([...cats.entries()], pers ? ord.cats : [], v=>sum(v.m));
@@ -1137,9 +1143,9 @@ function mxCella(r, m){
     : (ui.year===now.getFullYear() && m===now.getMonth() ? oggi : `${ui.year}-${String(m+1).padStart(2,'0')}-01`);
   const pre = JSON.stringify({t:tipo, cat, sub: sub && sub!=='—' ? sub : '', d}).replace(/"/g,'&quot;');
   sheet(`<h3>${esc(cat)}${sub && sub!=='—' ? ' · '+esc(sub) : ''}</h3>
-    <p class="note" style="margin:-6px 0 12px">${tipo==='u'?'Uscite':'Entrate'} · ${m<0 ? ui.year : MESI[m]+' '+ui.year} · <b class="mono" style="color:var(--ink)">${eur(sum(list.map(t=>t.amt)))}</b></p>
-    ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)].filter(Boolean).join(' · '))}</small></div>
-      <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`).join('') || '<div class="empty">Nessun movimento.</div>'}
+    <p class="note" style="margin:-6px 0 12px">${tipo==='u'?'Uscite':'Entrate'} · ${m<0 ? ui.year : MESI[m]+' '+ui.year} · <b class="mono" style="color:var(--ink)">${eur(sum(list.map(spesa)))}</b></p>
+    ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t), t.quota!=null?`gruppo: pagati ${eur(t.amt)}`:''].filter(Boolean).join(' · '))}</small></div>
+      <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(spesa(t))}</b></div>`).join('') || '<div class="empty">Nessun movimento.</div>'}
     <button class="btn" style="margin-top:12px" onclick="openTx('', '', ${pre})">+ Aggiungi ${tipo==='u'?'uscita':'entrata'}</button>
     ${nDel ? `<button class="btn danger" style="margin-top:8px" onclick="mxElimina(${r},${m},false)">Elimina ${nDel===1?'questo movimento':'questi '+nDel+' movimenti'}</button>` : ''}
     ${nTutti > nDel ? `<button class="btn danger" style="margin-top:8px" onclick="mxElimina(${r},${m},true)">Elimina in tutti gli anni (${nTutti})</button>` : ''}`);
@@ -1162,7 +1168,7 @@ let ordDraft = null;
 function openOrdine(){
   const tipo = ui.mxTipo, o = mxOrdine(tipo), all = S.tx.filter(t=>t.t===tipo);
   const totC = new Map(), totS = new Map();
-  all.forEach(t=>{ totC.set(t.cat,(totC.get(t.cat)||0)+t.amt); if(t.sub){ const k=t.cat+'\u0000'+t.sub; totS.set(k,(totS.get(k)||0)+t.amt); } });
+  all.forEach(t=>{ totC.set(t.cat,(totC.get(t.cat)||0)+spesa(t)); if(t.sub){ const k=t.cat+'\u0000'+t.sub; totS.set(k,(totS.get(k)||0)+spesa(t)); } });
   const m = catMap(tipo);
   // parto dall'ordine salvato e aggiungo in fondo, per importo, quello che non c'è ancora
   const merge = (saved, names, t) => [...saved.filter(n=>names.includes(n)), ...names.filter(n=>!saved.includes(n)).sort((a,b)=>(t(b)||0)-(t(a)||0))];
@@ -1911,11 +1917,13 @@ function catMap(tipo){
   S.tx.filter(t=>t.t===tipo).forEach(t=>{ if(!m.has(t.cat)) m.set(t.cat,new Set()); if(t.sub) m.get(t.cat).add(t.sub); });
   return m;
 }
-let draftT = 'u';
+let draftT = 'u', txAperto = '';
 function openTx(id, carta, pre){
+  txAperto = id || '';
   const t = id ? S.tx.find(x=>x.id===id) : {t:carta?'u':draftT, d:today(), cat:'', sub:'', amt:'', note:'', carta:carta||'', ...pre};
   if(pre && pre.t) draftT = pre.t;
   if(t.t==='r') return openPagRata(t);
+  if(t.t==='rb') return openRimb(t.gid, t.id);
   const rp = t.rata ? S.rate.find(r=>r.id===t.rata) : null, lock = rp && rp.done>0;
   const rateOk = !t.rid && !t.pf && !t.abid; // movimenti nati da rate, PagoFlex o abbonamenti non si rateizzano
   const dec = x => x ? String(x).replace('.',',') : '';
@@ -1950,13 +1958,28 @@ function openTx(id, carta, pre){
         ${lock?'<p class="note" style="margin:-6px 0 12px">Ci sono già rate pagate: per cambiare il piano vai nella sezione Rate.</p>':''}
       </div>
     </div>
+    <div id="t-g-w" style="display:${t.t==='u'?'block':'none'}">
+      <label class="chk" style="justify-content:flex-start;margin:-2px 0 10px"><input type="checkbox" id="t-g" ${t.quota!=null?'checked':''} onchange="$('t-g-f').style.display=this.checked?'block':'none';txGruppoPrev()"> Acquisto di gruppo</label>
+      <div id="t-g-f" style="display:${t.quota!=null?'block':'none'}">
+        <div class="f"><label>La mia quota (€)</label><input id="t-q" inputmode="decimal" value="${t.quota!=null?dec(t.quota):''}" placeholder="0,00 €" oninput="txGruppoPrev()"></div>
+        <p class="note" id="t-g-p" style="margin:-4px 0 12px"></p>
+        ${id && t.quota!=null ? `${rimborsi(t).map(x=>`<div class="tx" onclick="openRimb('${t.id}','${x.id}')"><div class="mid"><b>Rimborso ricevuto</b><small>${esc([fmtD(x.d), pagLabel(x), x.note].filter(Boolean).join(' · '))}</small></div><b class="mono mut">+${eur(x.amt)}</b></div>`).join('')}
+          <button class="btn sm ghost" style="margin:0 0 12px" onclick="openRimb('${t.id}')">+ Rimborso ricevuto</button>` : ''}
+      </div>
+    </div>
     <button class="btn" onclick="saveTx('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delTx('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
   fillCats(t.cat);
+  $('t-a').addEventListener('input', txGruppoPrev); txGruppoPrev();
   $('t-a').addEventListener('input', txRatePrev);
   txRatePrev();
   if(!id) setTimeout(()=>$('t-a').focus(),120);
+}
+function txGruppoPrev(){
+  const el = $('t-g-p'); if(!el) return;
+  const amt = num($('t-a').value), q = num($('t-q').value), t = txAperto && S.tx.find(x=>x.id===txAperto), ric = t ? sum(rimborsi(t).map(x=>x.amt)) : 0;
+  el.innerHTML = amt && $('t-q').value.trim() ? `Nelle spese conta solo la tua quota; dal conto o dalla carta escono ${eur(amt)}. Gli altri ti devono <b class="mono" style="color:var(--ink)">${eur(round2(amt-q))}</b>${ric?` · già ricevuti ${eur(ric)}`:''}.` : '';
 }
 function txRate(){
   const on = $('t-r').checked;
@@ -1981,7 +2004,7 @@ function openPagRata(t){
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
 }
 function setTxT(v){
-  $('t-t').value=v; draftT=v; $('t-k-w').style.display = v==='u'?'block':'none'; $('t-r-w').style.display = v==='u'?'block':'none';
+  $('t-t').value=v; draftT=v; $('t-k-w').style.display = v==='u'?'block':'none'; $('t-r-w').style.display = v==='u'?'block':'none'; $('t-g-w').style.display = v==='u'?'block':'none';
   document.querySelectorAll('#tx-seg button').forEach(b=>b.classList.toggle('on',b.classList.contains(v)));
   fillCats('');
 }
@@ -2002,6 +2025,12 @@ function saveTx(id){
   if(!o.amt) return toast('Inserisci un importo');
   if(!o.cat) return toast('Scegli una categoria');
   if(!o.d) return toast('Inserisci la data');
+  const gruppo = o.t==='u' && $('t-g') && $('t-g').checked;
+  if(gruppo){
+    if($('t-q').value.trim()==='') return toast('Inserisci la tua quota');
+    o.quota = round2(num($('t-q').value));
+    if(o.quota<0 || o.quota>=o.amt) return toast('La tua quota deve essere minore dell\'importo pagato');
+  } else if(id && rimborsi({id}).length) return toast('Ci sono rimborsi ricevuti: eliminali prima di togliere "Acquisto di gruppo"');
   const old = id && S.tx.find(x=>x.id===id);
   if(!(old && (old.rid || old.pf))) Object.assign(o, o.t==='u' ? pagParse($('t-k').value) : {carta:'', pag:'', conto:''});
   // pagato a rate: l'acquisto non muove soldi, li muovono le rate dal conto/carta di "Rate pagate con"
@@ -2027,7 +2056,7 @@ function saveTx(id){
   if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('Rateizzazione già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
   // carta di debito / conto / contanti: l'importo esce subito dal conto (prima tolgo l'effetto della versione vecchia)
   if(old) applyPag(old, -1);
-  if(old) Object.assign(old,o); else S.tx.push({id:uid(),...o});
+  if(old){ Object.assign(old,o); if(!gruppo) delete old.quota; } else S.tx.push({id:uid(),...o});
   const tx = old || S.tx[S.tx.length-1];
   applyPag(tx);
   if(o.t==='u' && !(old && (old.rid || old.pf))) ui.lastPag = $('t-k').value;
@@ -2048,8 +2077,40 @@ function delTx(id){
     if(!confirm(pr.done ? `Questo acquisto è pagato a rate e ${pr.done} rate sono già state pagate. Eliminare acquisto e piano rate? I pagamenti già registrati restano.` : 'Eliminare l\'acquisto e il suo piano rate?')) return;
     S.rate = S.rate.filter(r=>r!==pr);
   }
+  const rb = rimborsi(t);
+  if(rb.length && !confirm(`Eliminare anche i ${rb.length} rimborsi ricevuti per questo acquisto (${eur(sum(rb.map(x=>x.amt)))})? Gli importi vengono tolti dai conti.`)) return;
+  rb.forEach(x=>applyPag(x, -1));
   applyPag(t, -1); // restituisce l'importo al conto
-  S.tx=S.tx.filter(x=>x.id!==id); save(); closeSheet(); render(); toast('Eliminato');
+  S.tx=S.tx.filter(x=>x.id!==id && x.gid!==id); save(); closeSheet(); render(); toast('Eliminato');
+}
+// rimborso ricevuto per un acquisto di gruppo: entra nel conto scelto, non è un'entrata
+function openRimb(gid, id){
+  const g = S.tx.find(x=>x.id===gid), x = id ? S.tx.find(y=>y.id===id) : {amt:daRicevere(g), d:today(), conto:'', note:''};
+  const conti = S.conti.filter(c=>c.g!=='Investimenti');
+  sheet(`<h3>${id?'Rimborso ricevuto':'Nuovo rimborso'}</h3>
+    <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(g.sub||g.cat)}</b> · pagati ${eur(g.amt)} · tua quota ${eur(g.quota)} · da ricevere ${eur(daRicevere(g) + (id ? x.amt : 0))}</p>
+    <div class="f"><input id="rb-a" class="amt" inputmode="decimal" placeholder="0,00 €" value="${x.amt>0?String(x.amt).replace('.',','):''}"></div>
+    <div class="grid2">
+      <div class="f"><label>Data</label><input type="date" id="rb-d" value="${x.d}"></div>
+      <div class="f"><label>Ricevuto su</label><select id="rb-c"><option value="">Non specificato</option>${conti.map(c=>`<option value="${c.id}" ${c.id===x.conto?'selected':''}>${esc(c.g==='Cash'?'Contanti · '+c.n:'Conto '+c.n)}</option>`).join('')}</select></div>
+    </div>
+    <div class="f"><label>Da chi / nota</label><input id="rb-n" value="${esc(x.note)}" placeholder="facoltativa"></div>
+    <button class="btn" onclick="saveRimb('${gid}','${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delRimb('${gid}','${id}')">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="openTx('${gid}')">Annulla</button>`);
+}
+function saveRimb(gid, id){
+  const g = S.tx.find(x=>x.id===gid), amt = round2(num($('rb-a').value)), d = $('rb-d').value, cid = $('rb-c').value;
+  if(!amt) return toast('Inserisci l\'importo'); if(!d) return toast('Inserisci la data');
+  const c = S.conti.find(x=>x.id===cid);
+  const o = {d, t:'rb', gid, cat:g.cat, sub:g.sub, amt, note:$('rb-n').value.trim(), conto:cid, pag: c ? (c.g==='Cash'?'contanti':'conto') : '', carta:''};
+  const old = id && S.tx.find(x=>x.id===id);
+  if(old){ applyPag(old, -1); Object.assign(old, o); applyPag(old); } else { const t = {id:uid(), ...o}; S.tx.push(t); applyPag(t); }
+  save(); render(); openTx(gid); toast('Rimborso salvato');
+}
+function delRimb(gid, id){
+  const x = S.tx.find(y=>y.id===id); applyPag(x, -1);
+  S.tx = S.tx.filter(y=>y.id!==id); save(); render(); openTx(gid);
 }
 
 /* ============ GIORNALE DI BORDO (app del gommone): scadenze di auto, scooter, moto, gommone e carrello ============
