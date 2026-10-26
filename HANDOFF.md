@@ -33,7 +33,9 @@ App per tracciare tutte le mie spese e finanze, stessa filosofia dell'"app del g
 6. (Consigliato) Google Cloud Console → API e servizi → Credenziali → limita la chiave API ai referrer `https://gasbarrigiordano-max.github.io/*`.
 7. GitHub → Settings → Pages → deploy dal branch. Sito: https://gasbarrigiordano-max.github.io/contabilit-/ → accedi, crea la passphrase, importa i CSV.
 
-## Schermate (barra in basso)
+## Schermate
+Su iPhone la barra in basso (pillola di vetro) ha, in ordine: **Panoramica · Movimenti · Carte · Rate · Patrimonio · Altro**; Altro contiene Mensile · Abbonamenti · Investimenti · Trading (ricorda l'ultima voce aperta). Su iPad/Mac il menu laterale ha tutte le voci.
+
 1. **Panoramica**: saldo mese/anno, liquidità e patrimonio, ciambella uscite per categoria, barre entrate vs uscite, top voci.
 2. **Movimenti**: lista con filtri (tipo, mese/anno, ricerca), pulsante + per aggiungere, tocca per modificare/eliminare.
 3. **Mensile**: tabella categorie × mesi (replica la tabella "Contabilità" del mio file Numbers), uscite/entrate; ordine per importo o personalizzato (↕ Ordina: categorie e voci con ▲▼, salvato in `opz.ordine[u|e]`, `opz.mxSort`).

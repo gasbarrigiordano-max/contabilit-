@@ -233,6 +233,9 @@ nav button{flex:1;background:none;border:none;color:var(--ink2);display:flex;fle
 nav button.on{background:var(--nav-on)}
 nav button svg{width:21px;height:21px}
 nav button.wide-only{display:none}
+/* ordine della barra del telefono: Panoramica, Movimenti, Carte, Rate, Patrimonio, Altro */
+nav button[data-t=home]{order:1} nav button[data-t=mov]{order:2} nav button[data-t=carte]{order:3}
+nav button[data-t=rate]{order:4} nav button[data-t=pat]{order:5} nav button[data-t=altro]{order:6}
 nav button.on{color:var(--acc)}
 
 /* sheet */
@@ -279,6 +282,7 @@ nav button.on{color:var(--acc)}
   nav button.on{background:var(--acc-dim);color:var(--acc)}
   nav button svg{width:19px;height:19px}
   nav button.wide-only{display:flex}
+  nav button{order:0 !important} /* menu laterale: ordine del codice */
   .fab{right:32px;bottom:32px}
   .toast{left:calc(50% + 105px);bottom:32px}
   .ov{align-items:center}
@@ -414,10 +418,10 @@ nav button.on{color:var(--acc)}
 <nav id="nav">
   <button data-t="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Panoramica</button>
   <button data-t="mov"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Movimenti</button>
-  <button data-t="mx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mensile</button>
+  <button data-t="mx" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mensile</button>
   <button data-t="pat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>Patrimonio</button>
-  <button data-t="rate" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Rate</button>
-  <button data-t="carte" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/><circle cx="16.5" cy="15" r="1.2"/><circle cx="18.8" cy="15" r="1.2"/></svg>Carte</button>
+  <button data-t="rate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8.5 15l2.2 2.2L15.5 13"/></svg>Rate</button>
+  <button data-t="carte"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/><circle cx="16.5" cy="15" r="1.2"/><circle cx="18.8" cy="15" r="1.2"/></svg>Carte</button>
   <button data-t="abbo" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 15"/><path d="M4 20v-5h5"/></svg>Abbonamenti</button>
   <button data-t="inv" class="wide-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Investimenti</button>
   <button data-t="altro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>Altro</button>
@@ -837,12 +841,19 @@ WIDE.addEventListener('change', ()=>showTab(ui.tab==='altro' && SUB.includes(ui.
 
 /* ============ NAV / PERIODO ============ */
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
-const SUB = ['rate','carte','abbo','inv']; // su schermo largo hanno una voce nel menu, su telefono stanno in Altro
+const SUB = ['rate','carte','abbo','inv'];      // sezioni disegnate nella vista di Altro
+const IN_ALTRO = ['mx','abbo','inv','trading'];   // su telefono stanno dentro Altro (Mensile ha la sua vista)
 function showTab(t){
-  if(SUB.includes(t)){ ui.altro=t; if(!WIDE.matches) t='altro'; }
-  else if(t==='altro' && WIDE.matches) ui.altro='trading';
+  const wide = WIDE.matches;
+  if(SUB.includes(t)) ui.altro = t;
+  if(!wide){
+    if(t==='abbo' || t==='inv') t = 'altro';
+    else if(t==='altro'){ if((ui.altroTel||'mx')==='mx') t = 'mx'; else ui.altro = ui.altroTel; } // riapre l'ultima voce usata
+    if(t==='mx' || t==='altro') ui.altroTel = t==='mx' ? 'mx' : ui.altro;
+  } else if(t==='altro') ui.altro = 'trading';
   ui.tab=t;
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  const navT = !wide && t==='mx' ? 'altro' : t;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===navT));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+(SUB.includes(t)?'altro':t)));
   $('fab').classList.toggle('on', t==='home'||t==='mov');
   $('chips').style.display = (t==='home'||t==='mov') ? 'flex' : 'none';
@@ -961,6 +972,11 @@ function renderMovList(){
 }
 
 /* ---- Mensile (come la tabella Contabilità di Numbers) ---- */
+// su telefono Altro raccoglie Mensile, Abbonamenti, Investimenti e Trading
+function altroSeg(cur){
+  return `<div class="seg" style="margin-bottom:14px">${[['mx','Mensile'],['abbo','Abbon.'],['inv','Invest.'],['trading','Trading']].map(([v,l])=>
+    `<button class="${cur===v?'on':''}" onclick="${v==='mx' ? "showTab('mx')" : `ui.altro='${v}';ui.altroTel='${v}';showTab('altro')`}">${l}</button>`).join('')}</div>`;
+}
 function renderMx(){
   const tipo = ui.mxTipo;
   const tx = S.tx.filter(t=>t.t===tipo && txYear(t)===ui.year);
@@ -985,7 +1001,7 @@ function renderMx(){
         rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${fmt(sum(m))}</td></tr>`;
       });
   });
-  $('v-mx').innerHTML = `
+  $('v-mx').innerHTML = (WIDE.matches ? '' : altroSeg('mx')) + `
     <div class="seg" style="margin-bottom:12px">
       <button class="u ${tipo==='u'?'on':''}" onclick="ui.mxTipo='u';render()">Uscite</button>
       <button class="e ${tipo==='e'?'on':''}" onclick="ui.mxTipo='e';render()">Entrate</button>
@@ -1221,7 +1237,7 @@ function delConto(id){ S.conti=S.conti.filter(x=>x.id!==id); save(); closeSheet(
 
 /* ---- Altro: Rate / Investimenti / Trading ---- */
 function renderAltro(){
-  const tabs = [['rate','Rate'],['carte','Carte'],['abbo','Abbon.'],['inv','Invest.'],['trading','Trading']];
+
   let body='';
   if(ui.altro==='rate'){
     body = renderRate();
@@ -1243,8 +1259,8 @@ function renderAltro(){
       <button class="btn" style="margin-top:8px" onclick="addPL()">Aggiungi</button>
       <div style="margin-top:14px">${list.slice().reverse().map(t=>`<div class="tx" onclick="delPL('${t.id}')"><div class="mid"><b>${+t.d.slice(8,10)} ${MESI[m]}</b><small>tocca per eliminare</small></div><b class="mono ${t.v>=0?'pos':'neg'}">${t.v>0?'+':''}${eur(t.v)}</b></div>`).join('')}</div>`;
   }
-  // su schermo largo Rate e Investimenti sono nel menu: niente selettore
-  const seg = WIDE.matches ? '' : `<div class="seg" style="margin-bottom:14px">${tabs.map(([v,l])=>`<button class="${ui.altro===v?'on':''}" onclick="ui.altro='${v}';render()">${l}</button>`).join('')}</div>`;
+  // selettore di Altro solo su telefono e solo nella voce Altro (Rate e Carte hanno la loro voce nella barra)
+  const seg = !WIDE.matches && ui.tab==='altro' ? altroSeg(ui.altro) : '';
   $('v-altro').innerHTML = seg + body;
 }
 function renderRate(){
