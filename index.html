@@ -803,7 +803,7 @@ function applyPag(t, sign=1){
 /* ---- Storico del patrimonio: una "foto" per mese ----
    {m:'YYYY-MM', d (giorno in cui è stata scattata), tot, g:{Banche,Cash,Investimenti}, conti:[{n,g,v}], tipo}
    tipo 'fine' = ultimo giorno del mese · 'tardi' = alla prima apertura dopo, con i saldi riportati
-   a fine mese · 'ora' = salvata a mano durante il mese · 'inserito' = mese passato inserito a mano o da CSV
+   a fine mese · 'ora' = salvata a mano durante il mese (versioni precedenti; sostituita da quella di fine mese) · 'inserito' = mese passato inserito a mano o da CSV
    (mai sovrascritto in automatico). */
 const GRUPPI = ['Banche','Cash','Investimenti'];
 // saldi dei conti a una data passata: tolgo gli effetti registrati dall'app dopo quella data
@@ -829,15 +829,17 @@ function autoStorico(){
   if(!S.opz) S.opz = {};
   // lo storico automatico parte dal mese in cui l'app comincia a seguirlo: per i mesi prima non conosce i movimenti
   if(!S.opz.storicoDal){ S.opz.storicoDal = thisMonth(); save(); }
-  const t = today(), m = t.slice(0,7), prev = addYM(m,-1), get = x => S.storico.find(f=>f.m===x);
-  let f = null;
-  if(t===lastDay(m) && (get(m)||{}).tipo!=='inserito') f = fotoPatr(m, t, 'fine', S.conti.map(c=>({n:c.n, g:c.g, v:c.v})));
-  else if(!get(prev) && prev>=S.opz.storicoDal && S.conti.length) f = fotoPatr(prev, t, 'tardi', contiAl(lastDay(prev)));
-  if(!f) return 0;
-  const old = get(f.m);
-  if(old && JSON.stringify({...old, d:0}) === JSON.stringify({...f, d:0})) return 0;
-  putFoto(f); save();
-  return 1;
+  const t = today(), m = t.slice(0,7), get = x => S.storico.find(f=>f.m===x), nuove = [];
+  if(t===lastDay(m) && (get(m)||{}).tipo!=='inserito') nuove.push(fotoPatr(m, t, 'fine', S.conti.map(c=>({n:c.n, g:c.g, v:c.v}))));
+  // mesi già chiusi senza foto (app non aperta l'ultimo giorno, anche per più mesi) o con una foto 'ora' presa a metà mese:
+  // saldi riportati a fine mese togliendo i movimenti registrati dopo
+  if(S.conti.length) for(let x = S.opz.storicoDal; x < m; x = addYM(x,1)){
+    const old = get(x); if(!old || old.tipo==='ora') nuove.push(fotoPatr(x, t, 'tardi', contiAl(lastDay(x))));
+  }
+  let k = 0;
+  nuove.forEach(f=>{ const old = get(f.m); if(old && JSON.stringify({...old, d:0}) === JSON.stringify({...f, d:0})) return; putFoto(f); k++; });
+  if(k) save();
+  return k;
 }
 /* ---- Abbonamenti e servizi ricorrenti ----
    {id, n, costo, freq (mesi: 1, 2, 3, 6, 12), next:'YYYY-MM-DD' (prossima scadenza), pag ('k:carta'|'d:conto'|'c:conto'|'x:cash'|''),
@@ -1240,7 +1242,8 @@ function storicoHTML(){
       </div>
       <div id="pchart" class="pchart">${serie.length ? '' : '<div class="empty">Ancora nessun mese salvato: la prima foto del patrimonio viene scattata il '+fmtD(lastDay(thisMonth()))+'.</div>'}</div>
     </div>
-    <div class="gh"><b>Storico mensile</b><span><button class="btn sm ghost" onclick="salvaOra()">Salva ${MESI[now.getMonth()].toLowerCase()}</button> <button class="btn sm ghost" onclick="openFoto()">+ Mese passato</button></span></div>
+    <div class="gh"><b>Storico mensile</b><span><button class="btn sm ghost" onclick="openFoto()">+ Mese passato</button></span></div>
+    <p class="note" style="margin:-4px 0 10px">Salvataggio automatico · prossima foto il ${fmtD(lastDay(thisMonth()))}</p>
     ${righe || '<div class="empty">Nessun mese salvato</div>'}
     <p class="note" style="margin-top:10px">L'ultimo giorno di ogni mese il patrimonio viene salvato in automatico. Se quel giorno non apri l'app, viene salvato alla prima apertura dopo, riportando i saldi a fine mese (tolti i movimenti registrati nel frattempo).</p>`;
 }
@@ -1294,12 +1297,6 @@ function drawPatrChart(){
   svg.addEventListener('focus', ()=>show(cur)); svg.addEventListener('blur', hide);
 }
 let patResize; window.addEventListener('resize', ()=>{ if(ui.tab!=='pat') return; clearTimeout(patResize); patResize=setTimeout(drawPatrChart, 150); });
-function salvaOra(){
-  const m = thisMonth(), old = (S.storico||[]).find(f=>f.m===m);
-  if(old && old.tipo==='inserito' && !confirm('Questo mese era inserito a mano: sostituirlo con i saldi di oggi?')) return;
-  putFoto(fotoPatr(m, today(), 'ora', S.conti.map(c=>({n:c.n, g:c.g, v:c.v}))));
-  save(); render(); toast(`Patrimonio di ${MESI[now.getMonth()].toLowerCase()} salvato (verrà aggiornato l'ultimo giorno del mese)`);
-}
 // dettaglio di un mese, oppure inserimento di un mese passato (m vuoto)
 function openFoto(m){
   const f = m && S.storico.find(x=>x.m===m);
