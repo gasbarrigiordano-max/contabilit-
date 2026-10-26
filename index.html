@@ -1502,7 +1502,10 @@ function saveInv(id){
   const r = i>=0 ? S.inv[i] : {id:uid()};
   if(eff!=null && r.eff!==eff) r.agg = today(); // data dell'ultimo aggiornamento del valore
   Object.assign(r, {n, inv, eff, tipo:$('iv-t').value});
-  const pid = $('iv-p').value, moveable = !$('iv-p').disabled;
+  const pid = $('iv-p').value;
+  // genitore attuale: la voce resta dov'è se "Dentro a" non cambia
+  const pidOld = i>=0 && r.lvl>0 ? (()=>{ for(let j=i-1;j>=0;j--) if(S.inv[j].lvl===r.lvl-1) return S.inv[j].id; })() : '';
+  const moveable = !$('iv-p').disabled && (i<0 || pid!==pidOld);
   if(moveable){
     if(i>=0) S.inv.splice(i,1);
     if(!pid){ r.lvl = 0; S.inv.push(r); }
