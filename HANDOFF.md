@@ -52,6 +52,7 @@ Su iPhone la barra in basso (pillola di vetro) ha, in ordine: **Panoramica · Mo
 - Spese registrate con "+ Spesa con …" (o "Pagato con" nel movimento): sono uscite normali alla loro data; il giorno dell'addebito il totale del mese (spese + rate PagoFlex) viene tolto dal conto della carta.
 - **Disponibile = plafond − spese non ancora addebitate − capitale PagoFlex ancora da restituire.**
 - PagoFlex (ING): su spese ≥ 200 € (minimo modificabile), 3/6/9/12 rate (o altro numero), commissione mensile 0,5% dell'importo (modificabile; da verificare sul contratto). La commissione diventa un'uscita "Carte › Commissioni PagoFlex" a ogni addebito; il capitale no, perché la spesa è già tra le uscite.
+- **Rimborso rateale** (BBVA, Pay&Plan): come PagoFlex ma con commissione **fissa in € per tutto il piano**, divisa sulle rate (l'ultima assorbe gli arrotondamenti), da 50 €, 3/5/10 rate. Per carta: `pfNome`, `pfCommTipo` ('perc' | 'eur'); per piano `commTipo`. Pulsante "Rateizza" sulle spese.
 - Rate con "Pagata da" una carta: alla scadenza diventano spese della carta e lasciano il conto con l'estratto.
 
 ### Rate

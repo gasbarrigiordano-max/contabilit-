@@ -622,7 +622,7 @@ function rateDelMese(ym){
     }
   });
   // rate PagoFlex addebitate con l'estratto conto della carta
-  carte().forEach(c=>(c.flex||[]).forEach(f=>{ for(let i=0;i<f.n;i++){ const d=stmtDate(c, addYM(f.m0,i)); if(d.slice(0,7)===ym) out.push({r:{tipo:'PagoFlex'}, i, d, amt:pfRata(f,i), paid:i<f.done}); } }));
+  carte().forEach(c=>(c.flex||[]).forEach(f=>{ for(let i=0;i<f.n;i++){ const d=stmtDate(c, addYM(f.m0,i)); if(d.slice(0,7)===ym) out.push({r:{tipo:pfNome(c)}, i, d, amt:pfRata(f,i), paid:i<f.done}); } }));
   return out;
 }
 // vecchio formato {tipo, prod, rata, res} → piano senza data (va completato con Modifica)
@@ -667,8 +667,15 @@ const addYM = (ym,k) => addMonths(ym+'-01',k).slice(0,7);
 const lastDay = ym => ymd(new Date(+ym.slice(0,4), +ym.slice(5,7), 0));
 const stmtDate = (c,ym) => c.tipo==='fine' ? lastDay(ym) : addMonths(ym+'-'+String(Math.min(c.giorno||10,28)).padStart(2,'0'), 1);
 const pfCap = (f,i) => i===f.n-1 ? round2(f.imp - round2(f.imp/f.n)*(f.n-1)) : round2(f.imp/f.n);
-const pfFee = f => round2(f.imp*(f.comm||0)/100);
-const pfRata = (f,i) => round2(pfCap(f,i) + pfFee(f));
+// rateizzazione per carta: ING "PagoFlex" con commissione % al mese sull'importo,
+// BBVA "Rimborso rateale" con commissione fissa in € per tutto il piano, divisa sulle rate
+const pfNome = c => c.pfNome || (/bbva/i.test(c.n) ? 'Rimborso rateale' : 'PagoFlex');
+const pfEur = c => (c.pfCommTipo || (/bbva/i.test(c.n) ? 'eur' : 'perc')) === 'eur';
+const pfFee = (f,i) => f.commTipo==='eur'
+  ? (i===f.n-1 ? round2((f.comm||0) - round2((f.comm||0)/f.n)*(f.n-1)) : round2((f.comm||0)/f.n))
+  : round2(f.imp*(f.comm||0)/100);
+const pfCosto = f => f.commTipo==='eur' ? round2(f.comm||0) : round2(f.imp*(f.comm||0)/100*f.n);
+const pfRata = (f,i) => round2(pfCap(f,i) + pfFee(f,i));
 const pfResiduo = f => round2(sum(Array.from({length:f.n-f.done}, (_,j)=>pfCap(f, f.done+j))));
 const settled = (c,ym) => ym < c.dal || (c.es||[]).some(e=>e.m===ym);
 // spese della carta nel ciclo ym (escluse quelle passate a PagoFlex)
@@ -699,8 +706,8 @@ function settleCards(){
       const spese = round2(sum(cartaSpese(c,ym).map(x=>x.amt))), rate = pfDelCiclo(c,ym).filter(x=>x.i===x.f.done);
       const pf = round2(sum(rate.map(x=>pfRata(x.f,x.i))));
       rate.forEach(({f,i})=>{
-        const fee = pfFee(f), id = `pfc_${f.id}_${i}`;
-        if(fee && !S.tx.some(x=>x.id===id)) S.tx.push({id, d, t:'u', cat:'Carte', sub:'Commissioni PagoFlex', amt:fee, note:`${f.desc} · rata ${i+1}/${f.n}`});
+        const fee = pfFee(f,i), id = `pfc_${f.id}_${i}`;
+        if(fee && !S.tx.some(x=>x.id===id)) S.tx.push({id, d, t:'u', cat:'Carte', sub:'Commissioni '+pfNome(c), amt:fee, note:`${f.desc} · rata ${i+1}/${f.n}`});
         f.done++;
       });
       const tot = round2(spese+pf), conto = S.conti.find(x=>x.id===c.conto);
@@ -716,7 +723,7 @@ function seedCarte(){
   const find = re => (S.conti.find(c=>re.test(c.n))||{}).id || '';
   return [
     {id:'ing-oro', n:'ING Oro', plafond:1500, tipo:'giorno', giorno:10, conto:find(/\bing\b/i), pf:true, pfMin:200, pfComm:0.5, dal:thisMonth(), flex:[], es:[]},
-    {id:'bbva', n:'BBVA', plafond:1000, tipo:'fine', giorno:10, conto:find(/bbva/i), pf:false, pfMin:200, pfComm:0.5, dal:thisMonth(), flex:[], es:[]}
+    {id:'bbva', n:'BBVA', plafond:1000, tipo:'fine', giorno:10, conto:find(/bbva/i), pf:true, pfNome:'Rimborso rateale', pfCommTipo:'eur', pfMin:50, pfComm:0, dal:thisMonth(), flex:[], es:[]}
   ];
 }
 // conti con carta di debito/prepagata: se mancano li creo una volta sola (saldo 0, da compilare in Patrimonio)
@@ -823,6 +830,11 @@ function afterLoad(){
   if(!S.opz) S.opz = {};
   if(!S.opz.contiBase){ seedConti(); S.opz.contiBase = true; save(); }
   if(!S.carte){ S.carte = seedCarte(); seedConti(); }
+  if(!S.opz.bbvaRateale){
+    const b = S.carte.find(c=>/bbva/i.test(c.n));
+    if(b) Object.assign(b, {pf:true, pfNome:'Rimborso rateale', pfCommTipo:'eur', pfMin:50, pfComm:b.pfCommTipo==='eur' ? b.pfComm : 0});
+    S.opz.bbvaRateale = true; save();
+  }
   if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
   if(!S.abbo) S.abbo = [];
@@ -1553,7 +1565,7 @@ function renderCarte(){
       <b class="mono ${disp<0?'neg':''}">${eur(disp)}</b>
       <div class="bar" style="margin:10px 0 12px"><div style="width:${Math.min(100,usato/(c.plafond||1)*100)}%;background:${disp<0?'var(--neg)':usato/(c.plafond||1)>.8?'var(--warn)':'var(--acc)'}"></div></div>
       <div class="row"><div><small>Spese da addebitare</small><b class="mono" style="font-size:16px">${eur(round2(usato-resPF))}</b></div>
-        ${c.pf?`<div style="text-align:right"><small>PagoFlex residuo</small><b class="mono" style="font-size:16px">${eur(resPF)}</b></div>`:''}</div></div>
+        ${c.pf?`<div style="text-align:right"><small>${pfNome(c)} residuo</small><b class="mono" style="font-size:16px">${eur(resPF)}</b></div>`:''}</div></div>
     <div class="note" style="margin:10px 2px 0">Addebito ${quando} ${c.conto?`su <b>${esc(contoName(c.conto))}</b>`:'<span style="color:var(--warn)">· scegli il conto di addebito in Modifica</span>'}${prossimo?` · prossimo: <b>${fmtD(stmtDate(c,prossimo))}</b>, ${eur(cicloTot(c,prossimo))}`:''}</div>
     <button class="btn" style="margin-top:12px" onclick="openTx(null,'${c.id}')">+ Spesa con ${esc(c.n)}</button>`;
   // spese per ciclo non ancora addebitato (di solito il mese in corso, per ING anche il precedente fino al 10)
@@ -1562,23 +1574,23 @@ function renderCarte(){
     const sp = cartaSpese(c,ym).sort((a,b)=>b.d.localeCompare(a.d)), pfs = pfDelCiclo(c,ym).filter(x=>x.i>=x.f.done);
     html += `<div class="gh"><b>${MESI[+ym.slice(5)-1]} ${ym.slice(0,4)}</b><span class="mono">${eur(cicloTot(c,ym))} · addebito ${fmtD(stmtDate(c,ym))}</span></div>
       <div>${sp.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${fmtD(t.d)} · ${esc(t.sub?t.cat:'')}${t.note?' · '+esc(t.note):''}</small></div>
-          ${c.pf && t.amt>=(c.pfMin||0) && !t.rid ? `<button class="btn sm ghost" onclick="event.stopPropagation();openPF('${c.id}','${t.id}')">PagoFlex</button>` : ''}
+          ${c.pf && t.amt>=(c.pfMin||0) && !t.rid ? `<button class="btn sm ghost" onclick="event.stopPropagation();openPF('${c.id}','${t.id}')">Rateizza</button>` : ''}
           <b class="mono">-${eur(t.amt)}</b></div>`).join('')}
-        ${pfs.map(({f,i})=>`<div class="tx" onclick="ui.carta='${c.id}';openPFPlan('${c.id}','${f.id}')"><div class="mid"><b>PagoFlex · ${esc(f.desc)}</b><small>rata ${i+1}/${f.n}</small></div><b class="mono">-${eur(pfRata(f,i))}</b></div>`).join('')}
+        ${pfs.map(({f,i})=>`<div class="tx" onclick="ui.carta='${c.id}';openPFPlan('${c.id}','${f.id}')"><div class="mid"><b>${pfNome(c)} · ${esc(f.desc)}</b><small>rata ${i+1}/${f.n}</small></div><b class="mono">-${eur(pfRata(f,i))}</b></div>`).join('')}
         ${!sp.length && !pfs.length ? '<div class="empty" style="padding:12px">Nessuna spesa</div>' : ''}</div>`;
   });
   if(c.pf){
     const att = (c.flex||[]).filter(f=>f.done<f.n), fin = (c.flex||[]).filter(f=>f.done>=f.n);
-    html += `<h2 class="sec">PagoFlex attivi · ${eur(resPF)} da restituire</h2>
+    html += `<h2 class="sec">${pfNome(c)} attivi · ${eur(resPF)} da restituire</h2>
       <div class="rgrid">${att.map(f=>`<div class="card rate" onclick="openPFPlan('${c.id}','${f.id}')" style="cursor:pointer">
-        <div class="row"><div style="min-width:0"><b>${esc(f.desc)}</b><div class="note">${eur(f.imp)} in ${f.n} rate da ${eur(pfRata(f,f.done))}${pfFee(f)?` (comm. ${eur(pfFee(f))})`:''}</div></div><b class="mono">${eur(pfResiduo(f))}</b></div>
+        <div class="row"><div style="min-width:0"><b>${esc(f.desc)}</b><div class="note">${eur(f.imp)} in ${f.n} rate da ${eur(pfRata(f,f.done))}${pfCosto(f)?` (commissione ${eur(pfCosto(f))}${f.commTipo==='eur'?' in tutto':''})`:''}</div></div><b class="mono">${eur(pfResiduo(f))}</b></div>
         <div class="bar" style="margin:4px 0 8px"><div style="width:${f.done/f.n*100}%;background:var(--acc)"></div></div>
-        <div class="note">${f.done}/${f.n} addebitate · prossima ${fmtD(stmtDate(c, addYM(f.m0,f.done)))}</div></div>`).join('') || `<div class="empty">Nessun PagoFlex attivo. Tocca "PagoFlex" su una spesa da almeno ${eur(c.pfMin||0,0)}.</div>`}</div>
+        <div class="note">${f.done}/${f.n} addebitate · prossima ${fmtD(stmtDate(c, addYM(f.m0,f.done)))}</div></div>`).join('') || `<div class="empty">Nessuna rateizzazione attiva. Tocca "Rateizza" su una spesa da almeno ${eur(c.pfMin||0,0)}.</div>`}</div>
       ${fin.length?`<p class="note" style="margin-top:8px">Conclusi: ${fin.map(f=>esc(f.desc)+' ('+eur(f.imp)+')').join(', ')}</p>`:''}`;
   }
   const es = (c.es||[]).slice().sort((a,b)=>b.d.localeCompare(a.d));
-  html += `<h2 class="sec">Addebiti</h2>${es.map(e=>`<div class="tx" style="cursor:default"><div class="mid"><b>${fmtD(e.d)} · spese di ${MESI[+e.m.slice(5)-1].toLowerCase()}</b><small>${e.pf?`spese ${eur(e.spese)} + PagoFlex ${eur(e.pf)} · `:''}da ${esc(contoName(e.conto)||'—')}</small></div><b class="mono">-${eur(e.tot)}</b></div>`).join('') || '<div class="empty">Ancora nessun addebito</div>'}
-    <p class="note" style="margin-top:12px">Il giorno dell'addebito (o alla prima apertura dell'app dopo) il totale del mese viene tolto dal conto della carta. Disponibile = plafond − spese non ancora addebitate − PagoFlex ancora da restituire.</p>`;
+  html += `<h2 class="sec">Addebiti</h2>${es.map(e=>`<div class="tx" style="cursor:default"><div class="mid"><b>${fmtD(e.d)} · spese di ${MESI[+e.m.slice(5)-1].toLowerCase()}</b><small>${e.pf?`spese ${eur(e.spese)} + ${pfNome(c)} ${eur(e.pf)} · `:''}da ${esc(contoName(e.conto)||'—')}</small></div><b class="mono">-${eur(e.tot)}</b></div>`).join('') || '<div class="empty">Ancora nessun addebito</div>'}
+    <p class="note" style="margin-top:12px">Il giorno dell'addebito (o alla prima apertura dell'app dopo) il totale del mese viene tolto dal conto della carta. Disponibile = plafond − spese non ancora addebitate − ${pfNome(c)} ancora da restituire.</p>`;
   return html;
 }
 function openCarta(id){
@@ -1592,10 +1604,12 @@ function openCarta(id){
     </div>
     <div class="f"><label>Colore della carta</label><select id="k-col">${COLORI_CARTA.map(([v,l])=>`<option value="${v}" ${v===cartaColore(c)?'selected':''}>${l}</option>`).join('')}</select></div>
     <div class="f"><label>Conto di addebito</label><select id="k-c"><option value="">—</option>${S.conti.map(x=>`<option value="${x.id}" ${x.id===c.conto?'selected':''}>${esc(x.n)} · ${x.g}</option>`).join('')}</select></div>
-    <label class="chk" style="justify-content:flex-start;margin:0 0 10px"><input type="checkbox" id="k-pf" ${c.pf?'checked':''} onchange="$('k-pf-w').style.display=this.checked?'grid':'none'"> PagoFlex (rateizzazione delle spese)</label>
+    <label class="chk" style="justify-content:flex-start;margin:0 0 10px"><input type="checkbox" id="k-pf" ${c.pf?'checked':''} onchange="$('k-pf-w').style.display=this.checked?'grid':'none'"> Rateizzazione delle spese</label>
     <div class="grid2" id="k-pf-w" style="display:${c.pf?'grid':'none'}">
+      <div class="f"><label>Nome del servizio</label><input id="k-pn" value="${esc(c.n?pfNome(c):'')}" placeholder="es. PagoFlex"></div>
       <div class="f"><label>Importo minimo (€)</label><input id="k-pm" inputmode="decimal" value="${c.pfMin??200}"></div>
-      <div class="f"><label>Commissione mensile (%)</label><input id="k-pc" inputmode="decimal" value="${String(c.pfComm??0.5).replace('.',',')}"></div>
+      <div class="f"><label>Commissione</label><select id="k-pu"><option value="perc" ${c.n&&!pfEur(c)?'selected':''}>% al mese sull'importo</option><option value="eur" ${c.n&&pfEur(c)?'selected':''}>€ fissi per piano</option></select></div>
+      <div class="f"><label>Valore predefinito</label><input id="k-pc" inputmode="decimal" value="${String(c.pfComm??0.5).replace('.',',')}"></div>
     </div>
     <button class="btn" onclick="saveCarta('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delCarta('${id}')">Elimina carta</button>`:''}
@@ -1603,7 +1617,7 @@ function openCarta(id){
 }
 function saveCarta(id){
   const o = {n:$('k-n').value.trim(), colore:$('k-col').value, plafond:num($('k-p').value), tipo:$('k-t').value, giorno:Math.min(28,Math.max(1,parseInt($('k-g').value)||10)),
-    conto:$('k-c').value, pf:$('k-pf').checked, pfMin:num($('k-pm').value), pfComm:num($('k-pc').value)};
+    conto:$('k-c').value, pf:$('k-pf').checked, pfNome:$('k-pn').value.trim()||'Rateizzazione', pfCommTipo:$('k-pu').value, pfMin:num($('k-pm').value), pfComm:num($('k-pc').value)};
   if(!o.n) return toast('Inserisci il nome');
   if(!o.plafond) return toast('Inserisci il plafond');
   if(id) Object.assign(carte().find(x=>x.id===id), o);
@@ -1612,27 +1626,27 @@ function saveCarta(id){
 }
 function delCarta(id){
   const c = carte().find(x=>x.id===id);
-  if((c.flex||[]).some(f=>f.done<f.n)) return toast('Ha PagoFlex in corso: non si può eliminare');
+  if((c.flex||[]).some(f=>f.done<f.n)) return toast(`Ha ${pfNome(c)} in corso: non si può eliminare`);
   if(!confirm(`Eliminare ${c.n}? Le spese restano tra i movimenti, senza carta.`)) return;
   S.tx.forEach(t=>{ if(t.carta===id){ t.carta=''; delete t.pf; } });
   S.rate.forEach(r=>{ if(r.carta===id) r.carta=''; });
   S.carte = S.carte.filter(x=>x.id!==id); save(); closeSheet(); render();
 }
-/* ---- PagoFlex ---- */
+/* ---- Rateizzazione con la carta (PagoFlex ING, Rimborso rateale BBVA) ---- */
 function openPF(cid, tid){
-  const c = carte().find(x=>x.id===cid), t = S.tx.find(x=>x.id===tid);
-  sheet(`<h3>PagoFlex</h3>
+  const c = carte().find(x=>x.id===cid), t = S.tx.find(x=>x.id===tid), eurC = pfEur(c);
+  sheet(`<h3>${pfNome(c)}</h3>
     <p class="note" style="margin:-6px 0 12px"><b style="color:var(--ink)">${esc(t.sub||t.cat)}</b> · ${fmtD(t.d)} · ${eur(t.amt)}</p>
     <div class="grid2">
-      <div class="f"><label>Numero rate</label><input id="pf-n" inputmode="numeric" list="pf-nl" value="3" oninput="pfPrev()"><datalist id="pf-nl"><option>3<option>6<option>9<option>12</datalist></div>
-      <div class="f"><label>Commissione mensile (%)</label><input id="pf-c" inputmode="decimal" value="${String(c.pfComm??0.5).replace('.',',')}" oninput="pfPrev()"></div>
+      <div class="f"><label>Numero rate</label><input id="pf-n" inputmode="numeric" list="pf-nl" value="3" oninput="pfPrev()"><datalist id="pf-nl">${(eurC?[3,5,10]:[3,6,9,12]).map(x=>`<option>${x}`).join('')}</datalist></div>
+      <div class="f"><label>${eurC?'Commissione totale (€)':'Commissione mensile (%)'}</label><input id="pf-c" inputmode="decimal" value="${eurC ? (c.pfComm?String(c.pfComm).replace('.',','):'') : String(c.pfComm??0.5).replace('.',',')}" placeholder="${eurC?'es. 10,00':''}" oninput="pfPrev()"></div>
     </div>
     <p class="note" id="pf-prev" style="margin:0 0 12px"></p>
-    <p class="note" style="margin:-4px 0 12px">La spesa esce dall'estratto conto di ${MESI[+t.d.slice(5,7)-1].toLowerCase()}: ogni mese viene addebitata una rata. Il capitale ancora da restituire resta impegnato sul plafond. Verifica nell'app ING rate e commissioni del tuo piano.</p>
-    <button class="btn" onclick="savePF('${cid}','${tid}')">Attiva PagoFlex</button>
+    <p class="note" style="margin:-4px 0 12px">La spesa esce dall'estratto conto di ${MESI[+t.d.slice(5,7)-1].toLowerCase()}: ogni mese viene addebitata una rata${eurC?' (la commissione è divisa sulle rate)':''}. Il capitale ancora da restituire resta impegnato sul plafond. Verifica nell'app della banca rate e commissione del tuo piano.</p>
+    <button class="btn" onclick="savePF('${cid}','${tid}')">Attiva ${pfNome(c)}</button>
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
-  pfPrev = ()=>{ const f={imp:t.amt, n:parseInt($('pf-n').value)||0, comm:num($('pf-c').value)}; if(f.n<2){ $('pf-prev').textContent=''; return; }
-    $('pf-prev').innerHTML = `Rata <b class="mono" style="color:var(--ink)">${eur(pfRata(f,0))}</b> × ${f.n} (capitale ${eur(pfCap(f,0))}${pfFee(f)?` + commissione ${eur(pfFee(f))}`:''}) · prima rata il ${fmtD(stmtDate(c,t.d.slice(0,7)))} · costo totale ${eur(round2(pfFee(f)*f.n))}`; };
+  pfPrev = ()=>{ const f={imp:t.amt, n:parseInt($('pf-n').value)||0, comm:num($('pf-c').value), commTipo:eurC?'eur':'perc'}; if(f.n<2){ $('pf-prev').textContent=''; return; }
+    $('pf-prev').innerHTML = `Rata <b class="mono" style="color:var(--ink)">${eur(pfRata(f,0))}</b> × ${f.n} (capitale ${eur(pfCap(f,0))}${pfFee(f,0)?` + commissione ${eur(pfFee(f,0))}`:''}) · prima rata il ${fmtD(stmtDate(c,t.d.slice(0,7)))} · costo totale ${eur(pfCosto(f))}`; };
   pfPrev();
 }
 let pfPrev = ()=>{};
@@ -1641,22 +1655,23 @@ function savePF(cid, tid){
   if(n<2) return toast('Almeno 2 rate');
   const id = uid();
   c.flex = c.flex || [];
-  c.flex.push({id, tx:tid, desc:t.sub||t.cat, imp:t.amt, n, comm:num($('pf-c').value), m0:t.d.slice(0,7), done:0});
+  c.flex.push({id, tx:tid, desc:t.sub||t.cat, imp:t.amt, n, comm:num($('pf-c').value), commTipo:pfEur(c)?'eur':'perc', m0:t.d.slice(0,7), done:0});
   t.pf = id;
-  save(); closeSheet(); render(); toast('PagoFlex attivato');
+  save(); closeSheet(); render(); toast(pfNome(c)+' attivato');
 }
 function openPFPlan(cid, fid){
   const c = carte().find(x=>x.id===cid), f = c.flex.find(x=>x.id===fid);
-  sheet(`<h3>PagoFlex · ${esc(f.desc)}</h3>
+  sheet(`<h3>${pfNome(c)} · ${esc(f.desc)}</h3>
     ${Array.from({length:f.n},(_,i)=>`<div class="acct" style="cursor:default"><span>${i<f.done?'✓ ':''}Rata ${i+1} · ${fmtD(stmtDate(c, addYM(f.m0,i)))}</span><b class="mono ${i<f.done?'mut':''}">${eur(pfRata(f,i))}</b></div>`).join('')}
-    <div class="row" style="margin:12px 2px"><span class="note">Capitale ancora da restituire</span><b class="mono">${eur(pfResiduo(f))}</b></div>
-    ${f.done===0?`<button class="btn danger" onclick="delPF('${cid}','${fid}')">Annulla PagoFlex</button>`:''}
+    <div class="row" style="margin:12px 2px 4px"><span class="note">Commissione${f.commTipo==='eur'?' (fissa)':''}</span><b class="mono">${eur(pfCosto(f))}</b></div>
+    <div class="row" style="margin:4px 2px 12px"><span class="note">Capitale ancora da restituire</span><b class="mono">${eur(pfResiduo(f))}</b></div>
+    ${f.done===0?`<button class="btn danger" onclick="delPF('${cid}','${fid}')">Annulla ${pfNome(c)}</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Chiudi</button>`);
 }
 function delPF(cid, fid){
   const c = carte().find(x=>x.id===cid), f = c.flex.find(x=>x.id===fid);
   const t = S.tx.find(x=>x.id===f.tx); if(t) delete t.pf;
-  c.flex = c.flex.filter(x=>x.id!==fid); save(); closeSheet(); render(); toast('PagoFlex annullato: la spesa torna nell\'estratto conto');
+  c.flex = c.flex.filter(x=>x.id!==fid); save(); closeSheet(); render(); toast(pfNome(c)+' annullato: la spesa torna nell\'estratto conto');
 }
 
 /* ---- servizi delle rate (PayPal, Klarna…): rinomina, aggiungi, elimina ---- */
@@ -1726,7 +1741,7 @@ function openTx(id, carta){
     <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
     <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
     <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label id="t-k-l">${rp?'Rate pagate con':'Pagato con'}</label><select id="t-k" ${t.rid||t.pf?'disabled':''}>${pagOptions(rp ? (rp.carta ? 'k:'+rp.carta : rp.conto ? 'c:'+rp.conto : '') : id ? pagValue(t) : carta ? 'k:'+carta : ui.lastPag||'')}</select>
-      ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con PagoFlex: per cambiarla annulla prima il PagoFlex nella sezione Carte.</p>':''}</div>
+      ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con la carta: per cambiarla annulla prima la rateizzazione nella sezione Carte.</p>':''}</div>
     <div id="t-r-w" style="display:${t.t==='u'&&rateOk?'block':'none'}">
       <label class="chk" style="justify-content:flex-start;margin:-2px 0 10px"><input type="checkbox" id="t-r" ${rp?'checked':''} ${lock?'disabled':''} onchange="txRate()"> Pagato a rate</label>
       <div id="t-r-f" style="display:${rp?'block':'none'}">
@@ -1814,7 +1829,7 @@ function saveTx(id){
   const chiuso = t => t && t.carta && (()=>{ const c=carte().find(x=>x.id===t.carta); return c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
   if(chiuso(old) && (o.carta!==old.carta || o.amt!==old.amt || o.d.slice(0,7)!==old.d.slice(0,7))) return toast('Estratto conto già addebitato: importo, mese e carta non si possono più cambiare');
   if(chiuso({...o, carta:o.carta}) && !(old && old.carta===o.carta && old.d.slice(0,7)===o.d.slice(0,7))) return toast('L\'estratto conto di quel mese è già stato addebitato');
-  if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('PagoFlex già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
+  if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('Rateizzazione già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
   // carta di debito / conto / contanti: l'importo esce subito dal conto (prima tolgo l'effetto della versione vecchia)
   if(old) applyPag(old, -1);
   if(old) Object.assign(old,o); else S.tx.push({id:uid(),...o});
@@ -1832,7 +1847,7 @@ function saveTx(id){
 }
 function delTx(id){
   const t = S.tx.find(x=>x.id===id);
-  if(t.pf) return toast('Spesa con PagoFlex: annulla prima il PagoFlex nella sezione Carte');
+  if(t.pf) return toast('Spesa rateizzata: annulla prima la rateizzazione nella sezione Carte');
   const pr = t.rata && S.rate.find(r=>r.id===t.rata);
   if(pr){
     if(!confirm(pr.done ? `Questo acquisto è pagato a rate e ${pr.done} rate sono già state pagate. Eliminare acquisto e piano rate? I pagamenti già registrati restano.` : 'Eliminare l\'acquisto e il suo piano rate?')) return;
