@@ -300,8 +300,6 @@ nav button.on{color:var(--acc)}
   .home .h-cat{grid-column:span 2}
   .home .h-cat,.home .h-bars{display:flex;flex-direction:column}
   .home .h-cat .card,.home .h-bars .card{flex:1}
-  .home .h-sub{grid-column:1/-1}
-  .home .h-sub .bl{display:grid;grid-template-columns:1fr 1fr;gap:14px 28px}
   .donut{width:150px;height:150px}
   .home .donut-wrap{gap:32px}
   .home .legend{flex:0 1 380px}
@@ -900,7 +898,6 @@ function renderHome(){
   const patr = sum(S.conti.map(c=>c.v)), liq = sum(S.conti.filter(c=>c.g!=='Investimenti').map(c=>c.v));
   let byCat = groupBy(U, t=>t.cat);
   if(byCat.length > PAL.length) byCat = [...byCat.slice(0, PAL.length-1), ['Altre', sum(byCat.slice(PAL.length-1).map(x=>x[1]))]];
-  const bySub = groupBy(U, t=>t.cat + (t.sub?' › '+t.sub:'')).slice(0,8);
   const yU = Array(12).fill(0), yE = Array(12).fill(0);
   S.tx.filter(t=>txYear(t)===ui.year).forEach(t=>{ (t.t==='u'?yU:yE)[txMonth(t)] += t.amt; });
   const mx = Math.max(1,...yU,...yE);
@@ -909,7 +906,6 @@ function renderHome(){
         <div style="width:6px;height:${yE[i]/mx*100}%;background:var(--acc);border-radius:3px;min-height:2px;opacity:${ui.month===i||ui.month==='all'?1:.35}"></div>
         <div style="width:6px;height:${yU[i]/mx*100}%;background:var(--neg);border-radius:3px;min-height:2px;opacity:${ui.month===i||ui.month==='all'?1:.35}"></div>
       </div><div style="font-size:9px;color:var(--ink3);margin-top:5px;font-weight:700">${m[0]}</div></div>`).join('');
-  const maxSub = bySub[0]?bySub[0][1]:1;
   $('v-home').innerHTML = `<div class="home">
     <div class="top2">
       <div class="card hero kpi sq"><div><small>Saldo ${periodLabel().toLowerCase()}</small><b class="mono ${saldo<0?'neg':''}" style="font-size:24px">${eur0(saldo)}</b></div>
@@ -924,9 +920,7 @@ function renderHome(){
     <div class="card">${byCat.length ? `<div class="donut-wrap">${donut(byCat)}<div class="legend">${byCat.map(([k,v],i)=>`<div><i style="background:${k==='Altre'&&i===PAL.length-1?'#9a9f9c':PAL[i%PAL.length]}"></i><span>${esc(k)}</span><b class="mono eu">${eurI(v)}</b><b class="mono pc">${Math.round(v/(tu||1)*100)}%</b></div>`).join('')}</div></div>` : '<div class="empty">Nessuna uscita nel periodo</div>'}</div></div>
     <div class="h-bars"><h2 class="sec">Entrate vs uscite · ${ui.year}</h2>
     <div class="card"><div style="display:flex;gap:2px">${bars}</div>
-      <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div></div>
-    <div class="h-sub"><h2 class="sec">Voci che pesano di più</h2>
-    <div class="card">${bySub.length ? `<div class="bl">${bySub.map(([k,v],i)=>`<div class="bl-i"><div class="top"><span>${esc(k)}</span><span class="mono">${eur0(v)}</span></div><div class="bar"><div style="width:${v/maxSub*100}%;background:${PAL[i%PAL.length]}"></div></div></div>`).join('')}</div>` : '<div class="empty">—</div>'}</div></div></div>`;
+      <div class="note" style="margin-top:10px;display:flex;gap:14px"><span><b style="color:var(--acc)">●</b> Entrate</span><span><b style="color:var(--neg)">●</b> Uscite</span></div></div></div></div>`;
 }
 
 // rate da pagare nel mese corrente, raggruppate per metodo (PayPal, Klarna…)
