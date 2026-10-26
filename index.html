@@ -130,6 +130,7 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .mx tr.grp td:first-child{background:var(--solid2)}
 .mx tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
 .mx td.z{color:var(--ink3)}
+.mx tr.grp td, .mx tr.sub td{cursor:pointer}
 .mx tr.tot td{font-weight:800;border-top:2px solid var(--line)}
 .mx td.t{font-weight:700;background:var(--solid2)}
 
@@ -148,7 +149,6 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .itile-h .logo{width:26px;height:26px;border-radius:8px}
 .itile-h small{font-size:12px;font-weight:700;color:var(--ink2)}
 .itile b{font-size:21px;font-weight:700;margin-top:auto}
-.itile-s{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .itile-f{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--ink2);margin-top:6px;white-space:nowrap}
 :root[data-theme="scuro"] .itile-bg{opacity:.5}
 .iriep-h{display:flex;align-items:center;gap:10px}
@@ -450,7 +450,7 @@ nav button.on{color:var(--acc)}
   <section class="view" id="v-altro"></section>
 </main>
 
-<button class="fab" id="fab" onclick="openTx()" aria-label="Nuovo movimento">+</button>
+<button class="fab" id="fab" onclick="ui.tab==='mx' ? openTx('', '', {t:ui.mxTipo}) : openTx()" aria-label="Nuovo movimento">+</button>
 
 <nav id="nav">
   <button data-t="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Panoramica</button>
@@ -911,7 +911,7 @@ function showTab(t){
   const navT = !wide && t==='mx' ? 'altro' : t;
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===navT));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+(SUB.includes(t)?'altro':t)));
-  $('fab').classList.toggle('on', t==='home'||t==='mov');
+  $('fab').classList.toggle('on', t==='home'||t==='mov'||t==='mx');
   $('chips').style.display = (t==='home'||t==='mov') ? 'flex' : 'none';
   $('mast-title').textContent = {home:'Bilancio',mov:'Movimenti',mx:'Mensile',pat:'Patrimonio',rate:'Rate',carte:'Carte di credito',abbo:'Abbonamenti',inv:'Investimenti',altro:'Altro'}[t];
   $('period-bar').style.display = (t==='pat' || SUB.includes(t)) ? 'none' : 'block';
@@ -1057,13 +1057,14 @@ function renderMx(){
   const fmt = eurI;
   const cell = v => `<td class="mono${v?'':' z'}">${fmt(v)}</td>`;
   const tot = Array(12).fill(0); order.forEach(([k,c])=>c.m.forEach((v,i)=>tot[i]+=v));
-  let rows='';
+  // tocco su una cella: i movimenti di quella categoria/voce nel mese (o nell'anno), da modificare o aggiungere
+  mxRighe = []; let rows='';
+  const riga = (cls, nome, m, cat, sub) => { const r = mxRighe.push({cat, sub}) - 1;
+    return `<tr class="${cls}"><td onclick="mxCella(${r},-1)">${esc(nome)}</td>${m.map((v,i)=>cell(v).replace('<td ',`<td onclick="mxCella(${r},${i})" `)).join('')}<td class="mono t" onclick="mxCella(${r},-1)">${fmt(sum(m))}</td></tr>`; };
   order.forEach(([k,c])=>{
-    rows+=`<tr class="grp"><td>${esc(k)}</td>${c.m.map(cell).join('')}<td class="mono t">${fmt(sum(c.m))}</td></tr>`;
+    rows += riga('grp', k, c.m, k, null);
     if(c.subs.size>1 || ![...c.subs.keys()].includes('—'))
-      ordina([...c.subs.entries()], pers ? ord.subs[k]||[] : [], sum).forEach(([s,m])=>{
-        rows+=`<tr class="sub"><td>${esc(s)}</td>${m.map(cell).join('')}<td class="mono t">${fmt(sum(m))}</td></tr>`;
-      });
+      ordina([...c.subs.entries()], pers ? ord.subs[k]||[] : [], sum).forEach(([s,m])=>{ rows += riga('sub', s, m, k, s); });
   });
   $('v-mx').innerHTML = (WIDE.matches ? '' : altroSeg('mx')) + `
     <div class="seg" style="margin-bottom:12px">
@@ -1078,7 +1079,21 @@ function renderMx(){
       <tr class="tot"><td>Totale mese</td>${tot.map(cell).join('')}<td class="mono t">${fmt(sum(tot))}</td></tr>
       ${rows || '<tr><td colspan="14" class="empty">Nessun dato per questo anno</td></tr>'}
     </table></div>
-    <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
+    <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. Tocca una cella per vedere, modificare o aggiungere i movimenti; + per una nuova ${tipo==='u'?'uscita':'entrata'}. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
+}
+let mxRighe = [];
+function mxCella(r, m){
+  const {cat, sub} = mxRighe[r], tipo = ui.mxTipo;
+  const list = S.tx.filter(t=>t.t===tipo && t.cat===cat && (sub==null || (t.sub||'—')===sub) && txYear(t)===ui.year && (m<0 || txMonth(t)===m))
+    .sort((a,b)=>b.d.localeCompare(a.d));
+  const oggi = today(), d = m<0 ? (ui.year===now.getFullYear() ? oggi : `${ui.year}-01-01`)
+    : (ui.year===now.getFullYear() && m===now.getMonth() ? oggi : `${ui.year}-${String(m+1).padStart(2,'0')}-01`);
+  const pre = JSON.stringify({t:tipo, cat, sub: sub && sub!=='—' ? sub : '', d}).replace(/"/g,'&quot;');
+  sheet(`<h3>${esc(cat)}${sub && sub!=='—' ? ' · '+esc(sub) : ''}</h3>
+    <p class="note" style="margin:-6px 0 12px">${tipo==='u'?'Uscite':'Entrate'} · ${m<0 ? ui.year : MESI[m]+' '+ui.year} · <b class="mono" style="color:var(--ink)">${eur(sum(list.map(t=>t.amt)))}</b></p>
+    ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)].filter(Boolean).join(' · '))}</small></div>
+      <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(t.amt)}</b></div>`).join('') || '<div class="empty">Nessun movimento.</div>'}
+    <button class="btn" style="margin-top:12px" onclick="openTx('', '', ${pre})">+ Aggiungi ${tipo==='u'?'uscita':'entrata'}</button>`);
 }
 
 /* ---- Ordine personalizzato delle categorie (Mensile) ----
@@ -1432,11 +1447,16 @@ function saveRata(id){
 }
 /* ---- Investimenti ----
    S.inv = elenco ordinato {id, n, lvl:0|1|2, inv, eff, agg}: le voci di livello 1 e 2 seguono la voce che le contiene.
-   inv/eff vuoti in una voce con sotto-voci = somma delle sotto-voci. I totali usano le voci di livello 0. */
+   una voce con sotto-voci che hanno importi = somma delle sotto-voci. I totali usano le voci di livello 0. */
 function invFigli(i){ const r = S.inv[i], out = []; for(let j=i+1; j<S.inv.length && S.inv[j].lvl>r.lvl; j++) if(S.inv[j].lvl===r.lvl+1) out.push(j); return out; }
-function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const v = invFigli(i).map(j=>invVal(j,k)); return v.some(x=>x!=null) ? round2(sum(v.map(x=>x||0))) : null; }
+// una voce con dentro voci che hanno importi vale la loro somma (es. P2P Lending = Bondora); altrimenti i suoi importi
+const invSomma = i => invFigli(i).some(j=>invVal(j,'inv')!=null || invVal(j,'eff')!=null);
+function invVal(i, k){
+  if(!invSomma(i)) return S.inv[i][k] ?? null;
+  const v = invFigli(i).map(j=>invVal(j,k)); return v.some(x=>x!=null) ? round2(sum(v.map(x=>x||0))) : null;
+}
 // tipologie degli investimenti: un riquadro ciascuna, con il logo della piattaforma sfocato come sfondo
-const INV_TIPI = [['azioni','Azioni','ibkr'],['crypto','Criptovalute','cro'],['p2p','P2P Lending','bondora'],['altro','Varie','crowdcube']];
+const INV_TIPI = [['azioni','Interactive Brokers','ibkr'],['crypto','Crypto.com','cro'],['p2p','Bondora','bondora'],['altro','Crowdcube','crowdcube']];
 const invTipoAuto = n => /interactive|ibkr|ibks|azion|etf|stock|borsa/i.test(n) ? 'azioni' : /crypto|cripto|bitcoin|btc|ethereum|eth\b|solana/i.test(n) ? 'crypto'
   : /bondora|p2p|lending|mintos|recrowd/i.test(n) ? 'p2p' : 'altro';
 // tipologia di una voce: la sua (voci principali) o quella della voce principale che la contiene
@@ -1491,12 +1511,10 @@ function invTot(k){
 function renderInv(){
   return `<div class="itiles">${INV_TIPI.map(([k,nome,logo])=>{
     const {its, vi, ve, haE, haI} = invTot(k), p = invPct(ve,vi);
-    const nomi = its.flatMap(i=>{ const f = invFigli(i); return (f.length ? f : [i]).map(j=>S.inv[j].n.replace(/^- /,'')); }).join(', ');
     return `<button class="itile" onclick="openInvTipo('${k}')">
       <span class="itile-clip"><img class="itile-bg" src="${LOGHI[logo]}" alt=""></span><span class="itile-in">
         <span class="itile-h"><img class="logo" src="${LOGHI[logo]}" alt=""><small>${nome}</small></span>
         <b class="mono">${haE ? eurI(ve) : '–'}</b>
-        <small class="itile-s">${its.length ? esc(nomi) : 'nessuna voce'}</small>
         <span class="itile-f"><span class="mono">inv. ${haI ? eurI(vi) : '–'}</span>${p!=null?`<span class="mono ${p>=0?'pos':'neg'}">${invPctS(p)}</span>`:''}</span>
       </span></button>`; }).join('')}</div>`;
 }
@@ -1504,7 +1522,7 @@ function renderInv(){
 function openInvTipo(k){
   ui.invRiep = k;
   const [, nome, logo] = INV_TIPI.find(t=>t[0]===k), {vi, ve, haE} = invTot(k), p = invPct(ve,vi);
-  const righe = S.inv.map((r,i)=>i).filter(i=>invTipo(i)===k).map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = r.inv==null && r.eff==null && invFigli(i).length;
+  const righe = S.inv.map((r,i)=>i).filter(i=>invTipo(i)===k).map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = invSomma(i);
     const p = invPct(ve,vi);
     return `<div class="inv-r" onclick="openInv('${r.id}')" style="cursor:pointer"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}${r.agg?`<small class="mut" style="display:block;font-size:10.5px;font-weight:500">agg. ${fmtD(r.agg)}</small>`:auto?'<small class="mut" style="display:block;font-size:10.5px;font-weight:500">somma delle voci</small>':''}</div>
       <div class="mono">${vi?eurI(vi):'–'}</div><div class="mono">${ve!=null?eurI(ve):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('');
@@ -1521,21 +1539,23 @@ function openInvTipo(k){
 const invTorna = () => ui.invRiep ? openInvTipo(ui.invRiep) : closeSheet();
 function openInv(id){
   const i = id ? S.inv.findIndex(x=>x.id===id) : -1, r = i>=0 ? S.inv[i] : {n:'', lvl:0, inv:null, eff:null};
-  const haFigli = i>=0 && invFigli(i).length;
+  const dec = v => v==null ? '' : String(v).replace('.',',');
+  const haFigli = i>=0 && invFigli(i).length, somma = i>=0 && invSomma(i);
+  const imp = k => somma ? `value="" placeholder="${eurI(invVal(i,k)??0)}" disabled` : `value="${dec(r[k])}" placeholder="${haFigli?'somma delle voci':'0 €'}"`;
   const genitore = i>=0 && r.lvl>0 ? (()=>{ for(let j=i-1;j>=0;j--) if(S.inv[j].lvl===r.lvl-1) return S.inv[j].id; })() : '';
   // si può mettere dentro una voce di livello 0 o 1 (massimo tre livelli), mai dentro se stessa
   const opz = `<option value="">— Voce principale —</option>` + S.inv.filter(x=>x.lvl<2 && x.id!==r.id).map(x=>`<option value="${x.id}" ${x.id===genitore?'selected':''}>${x.lvl?'   └ ':''}${esc(x.n.replace(/^- /,''))}</option>`).join('');
-  const dec = v => v==null ? '' : String(v).replace('.',',');
   sheet(`<h3>${id?'Modifica investimento':'Nuovo investimento'}</h3>
     <div class="f"><label>Nome</label><input id="iv-n" value="${esc(r.n.replace(/^- /,''))}" placeholder="es. Bitcoin, ETF MSCI World, Bondora"></div>
-    <div class="f" id="iv-t-w"><label>Tipologia</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(i>=0 ? invTipo(i) : ui.invRiep || 'altro')===k?'selected':''}>${l}</option>`).join('')}</select>
-      <p class="note" style="margin:4px 0 0">Per le voci dentro un'altra vale la tipologia di quella principale.</p></div>
+    <div class="f" id="iv-t-w"><label>Riquadro</label><select id="iv-t">${INV_TIPI.map(([k,l])=>`<option value="${k}" ${(i>=0 ? invTipo(i) : ui.invRiep || 'altro')===k?'selected':''}>${l}</option>`).join('')}</select>
+      <p class="note" style="margin:4px 0 0">Per le voci dentro un'altra vale il riquadro di quella principale.</p></div>
     <div class="f"><label>Dentro a</label><select id="iv-p" ${haFigli?'disabled':''}>${opz}</select>
       ${haFigli?'<p class="note" style="margin:4px 0 0">Contiene altre voci: per spostarla sposta prima quelle.</p>':''}</div>
     <div class="grid2">
-      <div class="f"><label>Investito (€)</label><input id="iv-i" inputmode="decimal" value="${dec(r.inv)}" placeholder="${haFigli?'somma delle voci':'0 €'}"></div>
-      <div class="f"><label>Valore attuale (€)</label><input id="iv-e" inputmode="decimal" value="${dec(r.eff)}" placeholder="${haFigli?'somma delle voci':'0 €'}"></div>
+      <div class="f"><label>Investito (€)</label><input id="iv-i" inputmode="decimal" ${imp('inv')}></div>
+      <div class="f"><label>Valore attuale (€)</label><input id="iv-e" inputmode="decimal" ${imp('eff')}></div>
     </div>
+    ${somma?'<p class="note" style="margin:-4px 0 12px">Il totale è la somma delle voci che contiene: si aggiorna modificando quelle.</p>':''}
     <button class="btn" onclick="saveInv('${id||''}')">Salva</button>
     ${id?`<button class="btn danger" style="margin-top:8px" onclick="delInv('${id}')">Elimina</button>`:''}
     <button class="btn ghost" style="margin-top:8px" onclick="invTorna()">Annulla</button>`);
@@ -1845,13 +1865,14 @@ function catMap(tipo){
   return m;
 }
 let draftT = 'u';
-function openTx(id, carta){
-  const t = id ? S.tx.find(x=>x.id===id) : {t:carta?'u':draftT, d:today(), cat:'', sub:'', amt:'', note:'', carta:carta||''};
+function openTx(id, carta, pre){
+  const t = id ? S.tx.find(x=>x.id===id) : {t:carta?'u':draftT, d:today(), cat:'', sub:'', amt:'', note:'', carta:carta||'', ...pre};
+  if(pre && pre.t) draftT = pre.t;
   if(t.t==='r') return openPagRata(t);
   const rp = t.rata ? S.rate.find(r=>r.id===t.rata) : null, lock = rp && rp.done>0;
   const rateOk = !t.rid && !t.pf && !t.abid; // movimenti nati da rate, PagoFlex o abbonamenti non si rateizzano
   const dec = x => x ? String(x).replace('.',',') : '';
-  if(!id && !carta && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
+  if(!id && !carta && !(pre && pre.d) && ui.month!=='all' && ui.year===now.getFullYear() && ui.month!==now.getMonth()){
     t.d = `${ui.year}-${String(ui.month+1).padStart(2,'0')}-01`;
   }
   sheet(`<h3>${id?'Modifica movimento':'Nuovo movimento'}</h3>
