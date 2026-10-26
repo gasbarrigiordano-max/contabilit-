@@ -820,6 +820,7 @@ function afterLoad(){
   if(!S.servizi) S.servizi = ['PayPal','Klarna','Scalapay','Findomestic','Compass'];
   S.rate.forEach(r=>{ if(r.tipo && !S.servizi.includes(r.tipo)) S.servizi.push(r.tipo); });
   if(!S.abbo) S.abbo = [];
+  S.inv.forEach(r=>{ if(!r.id) r.id = uid(); });
   payDueRate(); payAbbo(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
@@ -1227,15 +1228,7 @@ function renderAltro(){
   } else if(ui.altro==='carte'){
     body = renderCarte();
   } else if(ui.altro==='inv'){
-    const rows = S.inv; const top = rows.filter(r=>r.lvl===0);
-    const ti = sum(top.map(r=>r.inv||0)), te = sum(top.map(r=>r.eff||0));
-    body = `<div class="grid2"><div class="card kpi"><small>Investito</small><b class="mono">${eur(ti,0)}</b></div><div class="card kpi"><small>Valore attuale</small><b class="mono">${eur(te,0)}</b></div></div>
-      <div class="card kpi" style="margin-top:10px"><small>Rendimento totale</small><b class="mono ${te>=ti?'pos':'neg'}">${te>=ti?'+':''}${((te-ti)/(ti||1)*100).toFixed(1)}%  ·  ${te>=ti?'+':''}${eur(te-ti,0)}</b></div>
-      <h2 class="sec">Dettaglio</h2><div class="card" style="padding:4px 12px">
-      <div class="inv-r h"><div>Voce</div><div>Inv.</div><div>Attuale</div><div>%</div></div>
-      ${rows.map(r=>{ const p = r.inv>0&&r.eff!=null ? (r.eff-r.inv)/r.inv*100 : null;
-        return `<div class="inv-r"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}</div><div class="mono">${r.inv?eurI(r.inv):'–'}</div><div class="mono">${r.eff!=null?eurI(r.eff):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('')}</div>
-      <p class="note" style="margin-top:10px">Il rendimento % qui è ricalcolato da investito/attuale (nel foglio alcune celle % non coincidono con i valori).</p>`;
+    body = renderInv();
   } else {
     const m = ui.plMonth; const list = S.trading.filter(t=>+t.d.slice(0,4)===ui.year && +t.d.slice(5,7)-1===m).sort((a,b)=>a.d.localeCompare(b.d));
     const tot = sum(list.map(t=>t.v)); const mx = Math.max(1,...list.map(t=>Math.abs(t.v)));
@@ -1354,6 +1347,72 @@ function saveRata(id){
   addServizio(o.tipo);
   save(); closeSheet(); payDueRate(); render(); toast('Salvato');
 }
+/* ---- Investimenti ----
+   S.inv = elenco ordinato {id, n, lvl:0|1|2, inv, eff, agg}: le voci di livello 1 e 2 seguono la voce che le contiene.
+   inv/eff vuoti in una voce con sotto-voci = somma delle sotto-voci. I totali usano le voci di livello 0. */
+function invFigli(i){ const r = S.inv[i], out = []; for(let j=i+1; j<S.inv.length && S.inv[j].lvl>r.lvl; j++) if(S.inv[j].lvl===r.lvl+1) out.push(j); return out; }
+function invVal(i, k){ const r = S.inv[i]; if(r[k]!=null) return r[k]; const f = invFigli(i); return f.length ? round2(sum(f.map(j=>invVal(j,k)||0))) : null; }
+function renderInv(){
+  const idx = S.inv.map((r,i)=>i), top = idx.filter(i=>S.inv[i].lvl===0);
+  const ti = sum(top.map(i=>invVal(i,'inv')||0)), te = sum(top.map(i=>invVal(i,'eff')||0));
+  const righe = idx.map(i=>{ const r = S.inv[i], vi = invVal(i,'inv'), ve = invVal(i,'eff'), auto = r.inv==null && r.eff==null && invFigli(i).length;
+    const p = vi>0 && ve!=null ? (ve-vi)/vi*100 : null;
+    return `<div class="inv-r" onclick="openInv('${r.id}')" style="cursor:pointer"><div class="${r.lvl===1?'l1':r.lvl===2?'l2':''}" style="${r.lvl===0?'font-weight:700':''}">${esc(r.n.replace(/^- /,''))}${r.agg?`<small class="mut" style="display:block;font-size:10.5px;font-weight:500">agg. ${fmtD(r.agg)}</small>`:auto?'<small class="mut" style="display:block;font-size:10.5px;font-weight:500">somma delle voci</small>':''}</div>
+      <div class="mono">${vi?eurI(vi):'–'}</div><div class="mono">${ve!=null?eurI(ve):'–'}</div><div class="mono ${p==null?'mut':p>=0?'pos':'neg'}">${p==null?'–':(p>0?'+':'')+Math.round(p)+'%'}</div></div>`; }).join('');
+  return `<button class="btn" style="margin-bottom:12px" onclick="openInv()">+ Nuovo investimento</button>
+    <div class="grid2"><div class="card kpi"><small>Investito</small><b class="mono">${eur(ti,0)}</b></div><div class="card kpi"><small>Valore attuale</small><b class="mono">${eur(te,0)}</b></div></div>
+    <div class="card kpi" style="margin-top:10px"><small>Rendimento totale</small><b class="mono ${te>=ti?'pos':'neg'}">${te>=ti?'+':''}${((te-ti)/(ti||1)*100).toFixed(1).replace('.',',')}%  ·  ${te>=ti?'+':''}${eur(te-ti,0)}</b></div>
+    <h2 class="sec">Dettaglio</h2><div class="card" style="padding:4px 12px">
+      <div class="inv-r h"><div>Voce</div><div>Inv.</div><div>Attuale</div><div>%</div></div>
+      ${righe || '<div class="empty">Nessun investimento. Tocca "+ Nuovo investimento".</div>'}</div>
+    <p class="note" style="margin-top:10px">Tocca una voce per modificarla. Il rendimento % è calcolato da investito e valore attuale.</p>`;
+}
+function openInv(id){
+  const i = id ? S.inv.findIndex(x=>x.id===id) : -1, r = i>=0 ? S.inv[i] : {n:'', lvl:0, inv:null, eff:null};
+  const haFigli = i>=0 && invFigli(i).length;
+  const genitore = i>=0 && r.lvl>0 ? (()=>{ for(let j=i-1;j>=0;j--) if(S.inv[j].lvl===r.lvl-1) return S.inv[j].id; })() : '';
+  // si può mettere dentro una voce di livello 0 o 1 (massimo tre livelli), mai dentro se stessa
+  const opz = `<option value="">— Voce principale —</option>` + S.inv.filter(x=>x.lvl<2 && x.id!==r.id).map(x=>`<option value="${x.id}" ${x.id===genitore?'selected':''}>${x.lvl?'   └ ':''}${esc(x.n.replace(/^- /,''))}</option>`).join('');
+  const dec = v => v==null ? '' : String(v).replace('.',',');
+  sheet(`<h3>${id?'Modifica investimento':'Nuovo investimento'}</h3>
+    <div class="f"><label>Nome</label><input id="iv-n" value="${esc(r.n.replace(/^- /,''))}" placeholder="es. Bitcoin, ETF MSCI World, Bondora"></div>
+    <div class="f"><label>Dentro a</label><select id="iv-p" ${haFigli?'disabled':''}>${opz}</select>
+      ${haFigli?'<p class="note" style="margin:4px 0 0">Contiene altre voci: per spostarla sposta prima quelle.</p>':''}</div>
+    <div class="grid2">
+      <div class="f"><label>Investito (€)</label><input id="iv-i" inputmode="decimal" value="${dec(r.inv)}" placeholder="${haFigli?'somma delle voci':'0 €'}"></div>
+      <div class="f"><label>Valore attuale (€)</label><input id="iv-e" inputmode="decimal" value="${dec(r.eff)}" placeholder="${haFigli?'somma delle voci':'0 €'}"></div>
+    </div>
+    <button class="btn" onclick="saveInv('${id||''}')">Salva</button>
+    ${id?`<button class="btn danger" style="margin-top:8px" onclick="delInv('${id}')">Elimina</button>`:''}
+    <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Annulla</button>`);
+}
+function saveInv(id){
+  const n = $('iv-n').value.trim(); if(!n) return toast('Inserisci il nome');
+  const val = el => $(el).value.trim()==='' ? null : round2(num($(el).value));
+  const inv = val('iv-i'), eff = val('iv-e');
+  let i = id ? S.inv.findIndex(x=>x.id===id) : -1;
+  const r = i>=0 ? S.inv[i] : {id:uid()};
+  if(eff!=null && r.eff!==eff) r.agg = today(); // data dell'ultimo aggiornamento del valore
+  Object.assign(r, {n, inv, eff});
+  const pid = $('iv-p').value, moveable = !$('iv-p').disabled;
+  if(moveable){
+    if(i>=0) S.inv.splice(i,1);
+    if(!pid){ r.lvl = 0; S.inv.push(r); }
+    else { // in fondo alle sotto-voci del genitore
+      const pi = S.inv.findIndex(x=>x.id===pid); r.lvl = S.inv[pi].lvl + 1;
+      let j = pi+1; while(j<S.inv.length && S.inv[j].lvl>S.inv[pi].lvl) j++;
+      S.inv.splice(j, 0, r);
+    }
+  }
+  save(); closeSheet(); render(); toast('Salvato');
+}
+function delInv(id){
+  const i = S.inv.findIndex(x=>x.id===id); let j = i+1;
+  while(j<S.inv.length && S.inv[j].lvl>S.inv[i].lvl) j++;
+  if(!confirm(j-i>1 ? `Eliminare "${S.inv[i].n}" e le ${j-i-1} voci che contiene?` : `Eliminare "${S.inv[i].n}"?`)) return;
+  S.inv.splice(i, j-i); save(); closeSheet(); render();
+}
+
 /* ---- Loghi dei servizi (simboli da Simple Icons, CC0; iliad disegnato a mano) ---- */
 const LOGHI_SRV = {
   vodafone:'data:image/webp;base64,UklGRvgEAABXRUJQVlA4IOwEAAAQGwCdASpgAGAAPj0cjEOiIaGWqZxgIAPEswBpVMP/APxy1W3nn4s/lV0Duu/bv9s/eT0YtU/3r8uv8h2gPMA/Rb/B/mH2gPMB+xn+7/xnvDegD0AP67/PesO9AD9iPS39ir9lP+t/o/Z6zTPr4/x9cnvg7Vu6EXL6MZxgxZ3/c8r/0R/3PcK/lX9p6t/67eyB+xBv/UbKFpDVPP5ei+JGg7NseLOXm/myEGxvTcBExa114JVhu6BKTpMMyg0IyqeeZV+UU/nzW8hziRsWCS3++59y3W4z9v3vjUSp+3ThE+AA/vlPJmYCkWOJ1H94C+8AUUAAD5mt6gB//Pp/7/+rqQ9DP4gEJq1RnVC5MNVD75kwDOnIhp8JrCVYBGXAlTIQuT0W5A8eHAeq1o+/Xb/qMZ8uuvO4a36xGsZlCD36Q0O8vrl3PV0JT/St4CdHj5DdgPigsscedu9JCZOsfgDpodnPAjWFqmUHPGeggwku0xdAvlEajLMejwN8ZPwOyPz+Zhg/2nPjw0VTmxnCq6UFZOvx+jNPnB2WoqMBlIkv0xz/AK4bW/Hgamfd+2SKROKtvVjX6PIEY7Ntuv6fH4VwEQ/OxU0nlkSLRkgk/Wo7qlc6S6YpcqFaUZ8UVkDm2voP5PmX9xKZR2QqTe5wvFVL7//nBp0TY1If+9XVvGm2wlOI7CBRa6o8MFzK7esH0s237MawKpsCNoBix89DZYdwco3bXfe87PJ1lioJ5zHy6zD6CAuzEh3bTWLQzuHlmXM31MyyeabV2h8FQ03/9yxfI1Noq9GCdww1W+QNEn5Iaos9YsZqF5UeLYgL6Q/M3z6BHEfr3VnRxZ21ahscNuoNc+8mpO1LVhRi1Ooj062VE9fDkwcfMVtdXX46a9J/xN+TQMwJ+OfnGy0BloiHyalmtWbXPfBUufPw6NOXN7fRwj6hPBw8u/f9+8f2DWRY0TE2lm4gosSV5WtBow48tY4hFiQmjd3y+MBMp69DbYz7fq9b8u7JMiRhXupLXUyBu3Ecui5X6G5/WUr/SJgfyYNd8rN+indCzm6MkTLUrwylIRVciTm2BYBoMzPB6F0xXoiINDZnUe4QUrLViczQYLguf0qTNJpnc+tQ88QmOioXzCX59CzEDqKeIJhcMQAeasuIOnqepsCtPyFjHZyP2qP6Z55RuvxY4i08mZt5S5KwrGtI31mXHXy+DFtcR6NGyE1v0T5JXJzV09zbmd9U+noiR/N7Ii8nNnkKTBXOVN3GbhtLVAQxHrUUzwEmDaItG4kw6iyX7TMLn9XLRgUxP3aASN40xh49t7fmkUspiZ/2gAmYIwz1ZoNasHuKW+cxfIl3l82h3tTlvzXFvwG0uULXJjuWHFQkpVzI2TtGicVVai6tZ/iPkDArNstariNZFNXheSLLLz3IJB+ioKFyYdd7UzIKst5+FqWEwhrfaMWT5wkyol/PSdg9iaNZstOhME5xX66J5LFTs1eD4RYj+nOgkC1F+MUYGRbgh/LeLWIr1cJB8//Zna3lnX/JPJFj+q2/nWkSCYrBA/JedV7vnXPsWMwUFZ2hI9HEMdqU0RPkykJwRNzaguhH2Ab4bYKkf3EMuyCwLg3jSjq6Fes+T4Q0VFmXFSgJ6pCqQyYGOSZqfyKq7iZOy33k9eK//fyzpqD1rbDA5XaGhgAAAAA=',
@@ -1840,7 +1899,7 @@ function importCSV(f){
         out.push({id:uid(), tipo:c[0]||'PayPal', prod:c[1]==='-'?'':(c[1]||''), acq:null, tot:round2(rt*rs), n:rs, rata:rt, pre:0, done:0, first:csvDate(c[4]), fi:0, conto:ct?ct.id:''});
       } else if(kind==='inv'){
         if(!c[0]) return skipped++;
-        out.push({n:c[0],lvl:parseInt(c[1])||0,inv:csvNum(c[2]),eff:csvNum(c[3])});
+        out.push({id:uid(),n:c[0],lvl:parseInt(c[1])||0,inv:csvNum(c[2]),eff:csvNum(c[3])});
       } else if(kind==='storico'){
         // mese come 2026-03, 03/2026 o 01/03/2026
         const t=String(c[0]||'').trim(); let m=t.match(/^(\d{4})-(\d{1,2})/)||t.match(/^(?:\d{1,2}[\/.-])?(\d{1,2})[\/.-](\d{4})$/);
