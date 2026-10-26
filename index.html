@@ -883,7 +883,7 @@ function afterLoad(){
   if(!S.opz.invTipi){ seedInvTipi(); S.opz.invTipi = true; save(); }
   if(!S.opz.invIbks){ unisciIbks(); S.opz.invIbks = true; save(); }
   if(!S.opz.invGruppi){ invGruppi(); S.opz.invGruppi = true; save(); }
-  payDueRate(); payAbbo(); settleCards(); autoStorico();
+  payDueRate(); payAbbo(); bordoImporta(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
 function inPeriod(t){ return txYear(t)===ui.year && (ui.month==='all' || txMonth(t)===ui.month); }
@@ -2158,7 +2158,19 @@ const BORDO_CFG = {
 const BORDO_FONTI = [ // [chiave, mezzo, cosa]
   ...['auto','scooter','moto'].flatMap(v=>[[v+'_insurances',v,'Assicurazione'],[v+'_bollo',v,'Bollo'],[v+'_revisioni',v,'Revisione']]),
   ['insurances','gommone','Assicurazione'], ['carrelloInsurances','carrello','Assicurazione'], ['carrelloBollo','carrello','Bollo'], ['carrelloRevisioni','carrello','Revisione']];
-const bordo = {stato:'off', voci:[], err:'', email:'', agg:0};
+/* Importazione in Mezzi: rifornimenti (Benzina Golf / SH / Gommone) e bolli pagati (Bolli), dal 1° gennaio dell'anno
+   in cui è stata attivata. S.opz.bordoImp = {on, dal, pag, pagDal, fatti:[id]}: movimento id 'bf_<chiave>:<id>', con bf/bfAmt/bfD.
+   Quelli con data prima di pagDal (il passato, già nei saldi) non toccano i conti; dopo, si pagano con `pag`.
+   Cambiati o eliminati nel Giornale si aggiornano qui finché non li modifichi in Bilancio; eliminati qui non tornano (fatti). */
+const BORDO_IMP = (()=>{
+  const rif = x => x.excluded ? null : {d:x.date, amt:x.euro, note:[x.station||x.note||'Rifornimento',
+    x.liters ? x.liters.toFixed(1).replace('.',',')+' L' : x.pricePerLitro ? (x.euro/x.pricePerLitro).toFixed(1).replace('.',',')+' L' : ''].filter(Boolean).join(' · ')};
+  const bollo = m => x => ({d:x.paymentDate||x.scadenza, amt:x.importo, note:`Bollo ${m} · scadenza ${fmtD(x.scadenza)}`});
+  return [['auto_refuels','Benzina Golf',rif], ['scooter_refuels','Benzina SH',rif], ['refuels','Benzina Gommone',rif], ['moto_refuels','Benzina Moto',rif],
+    ['auto_bollo','Bolli',bollo('auto')], ['scooter_bollo','Bolli',bollo('scooter')], ['moto_bollo','Bolli',bollo('moto')], ['carrelloBollo','Bolli',bollo('carrello')]];
+})();
+const BORDO_CHIAVI = [...new Set([...BORDO_FONTI, ...BORDO_IMP].map(x=>x[0]))];
+const bordo = {stato:'off', voci:[], imp:[], err:'', email:'', agg:0};
 let bordoApp = null, bordoBoxH = '';
 const bordoOn = () => { try{ return localStorage.getItem('bilancio:bordo')==='1'; }catch(e){ return false; } };
 // dalle liste del Giornale alle scadenze {n:'Bollo auto', chi, d, amt (null = importo mai inserito), paid}
@@ -2170,6 +2182,43 @@ function bordoVoci(dati){
       out.push({n:`${cosa} ${mezzo}`, chi:x.compagnia||'', d:x.scadenza, amt: dopo ? imp(dopo) : imp(x), paid:!!dopo}); });
   });
   return out.sort((a,b)=>a.d.localeCompare(b.d));
+}
+function bordoImpVoci(dati){
+  const out = [];
+  BORDO_IMP.forEach(([k, sub, map])=>(Array.isArray(dati[k]) ? dati[k] : []).forEach(x=>{
+    const v = x && map(x); if(v && v.d && v.amt>0) out.push({id:`bf_${k}:${x.id||v.d}`, sub, d:v.d, amt:round2(v.amt), note:v.note}); }));
+  return out;
+}
+// estratto conto della carta già addebitato per il mese della spesa: l'importo non si tocca più
+const estrattoChiuso = t => !!t.carta && (()=>{ const c = carte().find(x=>x.id===t.carta); return !!c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
+function bordoImporta(){
+  if(bordo.stato!=='ok' || !S.carte) return 0;
+  if(!S.opz.bordoImp){ S.opz.bordoImp = {on:true, dal:`${now.getFullYear()}-01-01`, pag:'', pagDal:today(), fatti:[]}; save(); }
+  const o = S.opz.bordoImp; if(!o.on) return 0;
+  const mio = t => t.amt===t.bfAmt && t.d===t.bfD && !estrattoChiuso(t); // non toccato in Bilancio
+  let nuovi = 0, cambi = 0;
+  bordo.imp.forEach(v=>{
+    if(v.d < o.dal) return;
+    const t = S.tx.find(x=>x.id===v.id);
+    if(!t){
+      if(o.fatti.includes(v.id)) return;
+      const n = {id:v.id, d:v.d, t:'u', cat:'Mezzi', sub:v.sub, amt:v.amt, note:v.note, bf:1, bfAmt:v.amt, bfD:v.d, ...pagParse(v.d >= o.pagDal ? o.pag||'' : '')};
+      S.tx.push(n); applyPag(n); o.fatti.push(v.id); nuovi++;
+    } else if(mio(t) && (t.amt!==v.amt || t.d!==v.d)){ applyPag(t,-1); Object.assign(t, {amt:v.amt, d:v.d, bfAmt:v.amt, bfD:v.d, note:v.note}); applyPag(t); cambi++; }
+  });
+  // eliminati (o esclusi) nel Giornale: via anche qui, se non li hai modificati
+  const vivi = new Set(bordo.imp.map(v=>v.id)), via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t));
+  via.forEach(t=>applyPag(t,-1)); if(via.length) S.tx = S.tx.filter(t=>!via.includes(t));
+  if(nuovi || cambi || via.length){ save(); if(nuovi) toast(nuovi===1 ? '1 spesa importata dal Giornale di Bordo' : `${nuovi} spese importate dal Giornale di Bordo`); }
+  return nuovi + cambi + via.length;
+}
+// benzina e bolli già registrati a mano (o da Numbers) nello stesso periodo: si conterebbero due volte
+const bordoDoppi = () => { const o = S.opz.bordoImp; return o ? S.tx.filter(t=>t.t==='u' && !t.bf && t.d>=o.dal && /^mezzi$/i.test(t.cat) && /benzina|bollo|bolli/i.test(t.sub||'')) : []; };
+function bordoImpOpz(){
+  const o = S.opz.bordoImp, pag = $('bd-ip').value;
+  if(pag!==o.pag){ o.pag = pag; o.pagDal = today(); }
+  o.on = $('bd-io').checked;
+  save(); bordoImporta(); render(); bordoAggiorna();
 }
 const bordoDelMese = ym => bordo.voci.filter(v=>v.d.slice(0,7)===ym);
 function bordoAggiorna(){
@@ -2193,10 +2242,11 @@ async function bordoLeggi(){
   bordo.stato = 'carico'; bordoAggiorna();
   try{
     const col = bordoApp.firestore().collection('users').doc(u.uid).collection('data');
-    const docs = await Promise.all(BORDO_FONTI.map(([k])=>col.doc(k).get()));
+    const docs = await Promise.all(BORDO_CHIAVI.map(k=>col.doc(k).get()));
     const dati = {};
-    docs.forEach((d,i)=>{ if(d.exists) try{ dati[BORDO_FONTI[i][0]] = JSON.parse(d.data().value); }catch(e){} });
-    bordo.voci = bordoVoci(dati); bordo.stato = 'ok'; bordo.agg = Date.now();
+    docs.forEach((d,i)=>{ if(d.exists) try{ dati[BORDO_CHIAVI[i]] = JSON.parse(d.data().value); }catch(e){} });
+    bordo.voci = bordoVoci(dati); bordo.imp = bordoImpVoci(dati); bordo.stato = 'ok'; bordo.agg = Date.now();
+    if(!CLOUD || cloud.key) bordoImporta();
   }catch(e){ console.error(e); bordo.stato = 'err'; bordo.err = e.code==='permission-denied' ? 'accesso negato dalle regole del Giornale' : (e.code||e.message); }
   bordoAggiorna();
 }
@@ -2219,6 +2269,15 @@ function bordoBox(){
   const prossime = bordo.voci.filter(v=>!v.paid).slice(0,4);
   if(bordo.stato==='ok') return `<p class="note">Collegato come <b>${esc(bordo.email)}</b>: assicurazioni, bolli e revisioni compaiono in Panoramica (Da pagare) e in Abbonamenti.</p>
     ${prossime.map(v=>`<div class="row" style="font-size:13px;margin:4px 0"><span>${esc(v.n)} · ${fmtD(v.d)}</span><b class="mono">${v.amt!=null?eur(v.amt):'–'}</b></div>`).join('') || '<p class="note">Nessuna scadenza trovata nel Giornale.</p>'}
+    ${(()=>{ const o = (S.opz||{}).bordoImp; if(!o) return '';
+      const imp = S.tx.filter(t=>t.bf), doppi = bordoDoppi();
+      return `<label class="chk" style="justify-content:flex-start;margin:12px 0 8px"><input type="checkbox" id="bd-io" ${o.on?'checked':''} onchange="bordoImpOpz()"> Importa benzina e bolli in Mezzi</label>
+      <div style="display:${o.on?'block':'none'}">
+        <p class="note" style="margin:0 0 8px">Benzina Golf · Benzina SH · Benzina Gommone · Bolli, dal ${fmtD(o.dal)}: ${imp.length} spese importate (${eur(sum(imp.map(t=>t.amt)))}).</p>
+        <div class="f"><label>Nuove spese pagate con</label><select id="bd-ip" onchange="bordoImpOpz()">${pagOptions(o.pag||'')}</select></div>
+        <p class="note" style="margin:-4px 0 0">Quelle prima del ${fmtD(o.pagDal)} non toccano i conti (sono già nei saldi).</p>
+        ${doppi.length ? `<p class="note neg" style="margin:8px 0 0">Attenzione: in Mezzi ci sono già ${doppi.length} spese di benzina o bolli dal ${fmtD(o.dal)} registrate a mano (${eur(sum(doppi.map(t=>t.amt)))}): si contano due volte. Eliminale dal Mensile (Mezzi › la voce › Elimina).</p>` : ''}
+      </div>`; })()}
     <div class="grid2" style="margin-top:10px"><button class="btn ghost" onclick="bordoLeggi()">Aggiorna</button><button class="btn ghost" onclick="bordoScollega()">Scollega</button></div>`;
   if(bordo.stato==='carico') return `<p class="note">Leggo le scadenze dal Giornale di Bordo…</p>`;
   if(bordo.stato==='err') return `<p class="note neg">Lettura non riuscita: ${esc(bordo.err)}</p><div class="grid2"><button class="btn ghost" onclick="bordoLeggi()">Riprova</button><button class="btn ghost" onclick="bordoScollega()">Scollega</button></div>`;
@@ -2529,7 +2588,7 @@ document.addEventListener('visibilitychange', async ()=>{
 window.addEventListener('beforeunload', e=>{ if(CLOUD && (cloud.timer || cloud.busy || cloud.dirty().length)){ e.preventDefault(); e.returnValue=''; } });
 
 // app rimasta aperta: a ogni ritorno in primo piano e ogni ora controllo le rate in scadenza
-function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + payAbbo() + settleCards() + autoStorico())) render(); }
+function checkRate(){ if((!CLOUD || cloud.key) && S.carte && (payDueRate() + payAbbo() + bordoImporta() + settleCards() + autoStorico())) render(); }
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !CLOUD) checkRate(); });
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && bordo.stato==='ok' && Date.now()-bordo.agg > 10*60*1000) bordoLeggi(); });
 setInterval(checkRate, 60*60*1000);
