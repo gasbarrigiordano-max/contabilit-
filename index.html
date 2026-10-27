@@ -2159,7 +2159,7 @@ const BORDO_FONTI = [ // [chiave, mezzo, cosa]
   ...['auto','scooter','moto'].flatMap(v=>[[v+'_insurances',v,'Assicurazione'],[v+'_bollo',v,'Bollo'],[v+'_revisioni',v,'Revisione']]),
   ['insurances','gommone','Assicurazione'], ['carrelloInsurances','carrello','Assicurazione'], ['carrelloBollo','carrello','Bollo'], ['carrelloRevisioni','carrello','Revisione']];
 /* Importazione in Mezzi: spese di carburante (Benzina Golf / SH / Gommone), bolli, assicurazioni, revisioni, acquisti e altro (Spese varie), dal giorno
-   indicato in "Importa dal" (all'attivazione: oggi; il passato è già in Bilancio). S.opz.bordoImp = {on, dal, pag, pagDal, fatti:[id]}: movimento id 'bf_<chiave>:<id>', con bf/bfAmt/bfD.
+   indicato in "Importa dal" (all'attivazione: 1° gennaio dell'anno). S.opz.bordoImp = {on, dal, pag, pagDal, fatti:[id]}: movimento id 'bf_<chiave>:<id>', con bf/bfAmt/bfD.
    Solo spese già fatte (data fino a oggi): le scadenze future restano promemoria in Da pagare, non uscite.
    Quelli con data prima di pagDal (il passato, già nei saldi) non toccano i conti; dopo, si pagano con `pag`.
    Cambiati o eliminati nel Giornale si aggiornano qui finché non li modifichi in Bilancio; eliminati qui non tornano (fatti). */
@@ -2209,11 +2209,10 @@ function bordoImpVoci(dati){
 const estrattoChiuso = t => !!t.carta && (()=>{ const c = carte().find(x=>x.id===t.carta); return !!c && (c.es||[]).some(e=>e.m===t.d.slice(0,7)); })();
 function bordoImporta(){
   if(bordo.stato!=='ok' || !S.carte) return 0;
-  // si importano le spese nuove: il passato è già in Bilancio (da Numbers o a mano)
-  if(!S.opz.bordoImp){ S.opz.bordoImp = {on:true, dal:today(), pag:'', pagDal:today(), fatti:[]}; save(); }
+  if(!S.opz.bordoImp){ S.opz.bordoImp = {on:true, dal:`${now.getFullYear()}-01-01`, pag:'', pagDal:today(), fatti:[]}; save(); }
   const o = S.opz.bordoImp; if(!o.on) return 0;
-  // una volta: la prima versione importava dal 1° gennaio; ora solo dalle spese nuove (dal 27/10/2026)
-  if(!S.opz.bordoSoloNuove){ if(o.dal < '2026-10-27') o.dal = '2026-10-27'; S.opz.bordoSoloNuove = true; }
+  // una volta: dopo la versione che importava solo le spese nuove (dal 27/10), di nuovo tutto dal 1° gennaio 2026
+  if(!S.opz.bordoTuttoAnno){ if(o.dal > '2026-01-01') o.dal = '2026-01-01'; S.opz.bordoTuttoAnno = true; }
   // importati con data prima di "Importa dal": tolti (non toccavano i conti); se la data torna indietro si reimportano
   const prima = S.tx.filter(t=>t.bf && t.d < o.dal);
   if(prima.length){ prima.forEach(t=>applyPag(t,-1)); S.tx = S.tx.filter(t=>!prima.includes(t)); o.fatti = o.fatti.filter(id=>!prima.some(t=>t.id===id)); }
@@ -2304,7 +2303,7 @@ function bordoBox(){
       const imp = S.tx.filter(t=>t.bf), doppi = bordoDoppi();
       return `<label class="chk" style="justify-content:flex-start;margin:12px 0 8px"><input type="checkbox" id="bd-io" ${o.on?'checked':''} onchange="bordoImpOpz()"> Importa le spese dei mezzi in Mezzi</label>
       <div style="display:${o.on?'block':'none'}">
-        <p class="note" style="margin:0 0 8px">Benzina Golf · Benzina SH · Benzina Gommone · Bolli · Assicurazioni · Revisioni · Acquisti · Spese varie: solo le spese nuove, le scadenze future restano promemoria. ${imp.length} spese importate (${eur(sum(imp.map(t=>t.amt)))}).</p>
+        <p class="note" style="margin:0 0 8px">Benzina Golf · Benzina SH · Benzina Gommone · Bolli · Assicurazioni · Revisioni · Acquisti · Spese varie (non quelle fatte da altri); le scadenze future restano promemoria. ${imp.length} spese importate (${eur(sum(imp.map(t=>t.amt)))}).</p>
         <div class="grid2"><div class="f"><label>Importa dal</label><input type="date" id="bd-id" value="${o.dal}" onchange="bordoImpOpz()"></div>
         <div class="f"><label>Pagate con</label><select id="bd-ip" onchange="bordoImpOpz()">${pagOptions(o.pag||'')}</select></div></div>
         <p class="note" style="margin:-4px 0 0">Quelle prima del ${fmtD(o.pagDal)} non toccano i conti (sono già nei saldi).</p>
