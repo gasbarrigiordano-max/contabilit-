@@ -129,8 +129,12 @@ table.mx{border-collapse:separate;border-spacing:0;font-size:12px;min-width:max-
 .mx tr.grp td{background:var(--solid2);font-weight:700}
 .mx tr.grp td:first-child{background:var(--solid2)}
 .mx tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
+.mx tr.det td{font-size:11px;color:var(--ink3)}
+.mx tr.det td:first-child{padding-left:34px;color:var(--ink3)}
+.mx tr.fuel td{font-style:italic;color:var(--ink2)}
+.mx tr.fuel td:first-child{padding-left:20px}
 .mx td.z{color:var(--ink3)}
-.mx tr.grp td, .mx tr.sub td{cursor:pointer}
+.mx tr.grp td, .mx tr.sub td, .mx tr.det td, .mx tr.fuel td{cursor:pointer}
 .mx tr.tot td{font-weight:800;border-top:2px solid var(--line)}
 .mx td.t{font-weight:700;background:var(--solid2)}
 
@@ -883,6 +887,7 @@ function afterLoad(){
   if(!S.opz.invTipi){ seedInvTipi(); S.opz.invTipi = true; save(); }
   if(!S.opz.invIbks){ unisciIbks(); S.opz.invIbks = true; save(); }
   if(!S.opz.invGruppi){ invGruppi(); S.opz.invGruppi = true; save(); }
+  if(!S.opz.mezziPerMezzo){ migraMezzi(); S.opz.mezziPerMezzo = true; save(); }
   payDueRate(); payAbbo(); bordoImporta(); settleCards(); autoStorico();
 }
 const txMonth = t => +t.d.slice(5,7)-1;
@@ -1046,7 +1051,7 @@ function renderMov(){
   let list = periodTx();
   if(ui.tipo!=='all') list = list.filter(t=>t.t===ui.tipo);
   const q = ui.q.trim().toLowerCase();
-  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+t.note).toLowerCase().includes(q));
+  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+(t.det||'')+' '+t.note).toLowerCase().includes(q));
   list.sort((a,b)=> b.d.localeCompare(a.d) || a.cat.localeCompare(b.cat));
   const tu = sum(list.filter(t=>t.t==='u').map(spesa)), te = sum(list.filter(t=>t.t==='e').map(t=>t.amt));
   let html = `<div class="seg">
@@ -1062,7 +1067,7 @@ function renderMovList(){
   let list = periodTx();
   if(ui.tipo!=='all') list = list.filter(t=>t.t===ui.tipo);
   const q = ui.q.trim().toLowerCase();
-  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+t.note).toLowerCase().includes(q));
+  if(q) list = list.filter(t=>(t.cat+' '+t.sub+' '+(t.det||'')+' '+t.note).toLowerCase().includes(q));
   list.sort((a,b)=> b.d.localeCompare(a.d) || a.cat.localeCompare(b.cat));
   if(!list.length){ $('mov-list').innerHTML='<div class="empty">Nessun movimento.<br>Tocca + per aggiungerne uno.</div>'; return; }
   const colorOf = c => PAL[Math.abs([...c].reduce((a,ch)=>a+ch.charCodeAt(0),0))%PAL.length];
@@ -1073,7 +1078,7 @@ function renderMovList(){
     const c = colorOf(t.cat);
     out += `<div class="tx" onclick="openTx('${t.id}')">
       ${t.abid && SRV_RE.some(([k,re])=>re.test(t.sub)) ? srvIcon(t.sub, 34) : `<div class="dot" style="background:${c}22;color:${c}">${esc(t.cat[0]||'?')}</div>`}
-      <div class="mid"><b>${t.t==='rb'?'Rimborso · ':''}${esc(t.sub||t.cat)}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small>${t.quota!=null?`<small>👥 pagati ${eur(t.amt)} · ${daRicevere(t)>0?`da ricevere ${eur(daRicevere(t))}`:'rimborsato'}</small>`:''}</div>
+      <div class="mid"><b>${t.t==='rb'?'Rimborso · ':''}${esc([t.sub||t.cat, t.det].filter(Boolean).join(' · '))}</b><small>${esc([t.sub?t.cat:'', t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t)?'💳 '+pagLabel(t):''].filter(Boolean).join(' · ')||(t.sub?'':'Totale mensile'))}</small>${t.quota!=null?`<small>👥 pagati ${eur(t.amt)} · ${daRicevere(t)>0?`da ricevere ${eur(daRicevere(t))}`:'rimborsato'}</small>`:''}</div>
       <b class="mono ${t.t==='e'?'pos':t.t==='r'||t.t==='rb'?'mut':''}">${t.t==='e'||t.t==='rb'?'+':'-'}${eur(spesa(t))}</b></div>`;
   });
   $('mov-list').innerHTML = out;
@@ -1090,11 +1095,14 @@ function renderMx(){
   const tx = S.tx.filter(t=>t.t===tipo && txYear(t)===ui.year);
   const cats = new Map();
   tx.forEach(t=>{
-    if(!cats.has(t.cat)) cats.set(t.cat,{m:Array(12).fill(0),subs:new Map()});
-    const c = cats.get(t.cat); c.m[txMonth(t)]+=spesa(t);
+    if(!cats.has(t.cat)) cats.set(t.cat,{m:Array(12).fill(0),subs:new Map(),dets:new Map()});
+    const c = cats.get(t.cat), mi = txMonth(t), v = spesa(t); c.m[mi]+=v;
     const sk = t.sub||'—';
-    if(!c.subs.has(sk)) c.subs.set(sk,Array(12).fill(0));
-    c.subs.get(sk)[txMonth(t)]+=spesa(t);
+    if(!c.subs.has(sk)){ c.subs.set(sk,Array(12).fill(0)); c.dets.set(sk,new Map()); }
+    c.subs.get(sk)[mi]+=v;
+    const dk = t.det||'—', dm = c.dets.get(sk);
+    if(!dm.has(dk)) dm.set(dk,Array(12).fill(0));
+    dm.get(dk)[mi]+=v;
   });
   const pers = (S.opz||{}).mxSort==='pers', ord = mxOrdine(tipo);
   const order = ordina([...cats.entries()], pers ? ord.cats : [], v=>sum(v.m));
@@ -1103,12 +1111,22 @@ function renderMx(){
   const tot = Array(12).fill(0); order.forEach(([k,c])=>c.m.forEach((v,i)=>tot[i]+=v));
   // tocco su una cella: i movimenti di quella categoria/voce nel mese (o nell'anno), da modificare o aggiungere
   mxRighe = []; let rows='';
-  const riga = (cls, nome, m, cat, sub) => { const r = mxRighe.push({cat, sub}) - 1;
+  const riga = (cls, nome, m, cat, sub, det, fuel) => { const r = mxRighe.push({cat, sub, det, fuel}) - 1;
     return `<tr class="${cls}"><td onclick="mxCella(${r},-1)">${esc(nome)}</td>${m.map((v,i)=>cell(v).replace('<td ',`<td onclick="mxCella(${r},${i})" `)).join('')}<td class="mono t" onclick="mxCella(${r},-1)">${fmt(sum(m))}</td></tr>`; };
   order.forEach(([k,c])=>{
     rows += riga('grp', k, c.m, k, null);
     if(c.subs.size>1 || ![...c.subs.keys()].includes('—'))
-      ordina([...c.subs.entries()], pers ? ord.subs[k]||[] : [], sum).forEach(([s,m])=>{ rows += riga('sub', s, m, k, s); });
+      ordina([...c.subs.entries()], pers ? ord.subs[k]||[] : [], sum).forEach(([s,m])=>{
+        rows += riga('sub', s, m, k, s);
+        // terzo livello (es. Mezzi › Auto › Gasolio): solo se la voce ha dei dettagli
+        const dm = c.dets.get(s);
+        if(dm.size>1 || !dm.has('—')) [...dm.entries()].sort((a,b)=>sum(b[1])-sum(a[1])).forEach(([d,dmm])=>{ rows += riga('det', d==='—'?'Altro':d, dmm, k, s, d); });
+      });
+    // Mezzi: la benzina e il gasolio di tutti i mezzi insieme
+    if(/^mezzi$/i.test(k)){
+      const fm = Array(12).fill(0); tx.filter(t=>t.cat===k && carburante(t)).forEach(t=>fm[txMonth(t)]+=spesa(t));
+      if(sum(fm)) rows += riga('fuel', '⛽ Carburante · tutti i mezzi', fm, k, null, null, true);
+    }
   });
   $('v-mx').innerHTML = (WIDE.matches ? '' : altroSeg('mx')) + `
     <div class="seg" style="margin-bottom:12px">
@@ -1126,17 +1144,27 @@ function renderMx(){
     <p class="note" style="margin-top:12px">Stessa logica del tuo foglio: macro-categoria, sottovoci e mesi in colonna. Tocca una cella per vedere, modificare o aggiungere i movimenti; + per una nuova ${tipo==='u'?'uscita':'entrata'}. <span class="narrow-only">Scorri a destra per vedere tutti i mesi.</span></p>`;
 }
 let mxRighe = [];
+// una volta: le spese di Mezzi registrate prima (Numbers, a mano) nella struttura per mezzo: Mezzi › Auto › Gasolio
+function migraMezzi(){
+  const mappa = [[/^(benzina|gasolio) (golf|auto|macchina)$/i,'Auto','Gasolio'], [/^benzina (sh|scooter)$/i,'SH','Benzina'], [/^benzina gommone$/i,'Gommone','Benzina'],
+    [/^(golf|auto|macchina)$/i,'Auto',''], [/^(sh|scooter)$/i,'SH',''], [/^gommone$/i,'Gommone','']];
+  S.tx.forEach(t=>{ if(!/^mezzi$/i.test(t.cat||'') || t.bf || t.det) return;
+    const m = mappa.find(([re])=>re.test(t.sub||'')); if(m){ t.sub = m[1]; if(m[2]) t.det = m[2]; } });
+}
+// benzina e gasolio (anche le voci di prima, tipo "Benzina Golf")
+const carburante = t => /^(benzina|gasolio|carburante)$/i.test(t.det||'') || (!t.det && /^(benzina|gasolio)\b/i.test(t.sub||''));
 // movimenti di una riga del Mensile: nel mese m (o nell'anno con m<0), o in tutti gli anni
 function mxMov(r, m, tutti){
-  const {cat, sub} = mxRighe[r], tipo = ui.mxTipo;
-  return S.tx.filter(t=>t.t===tipo && t.cat===cat && (sub==null || (t.sub||'—')===sub) && (tutti || (txYear(t)===ui.year && (m<0 || txMonth(t)===m))));
+  const {cat, sub, det, fuel} = mxRighe[r], tipo = ui.mxTipo;
+  return S.tx.filter(t=>t.t===tipo && t.cat===cat && (sub==null || (t.sub||'—')===sub) && (det==null || (t.det||'—')===det) && (!fuel || carburante(t))
+    && (tutti || (txYear(t)===ui.year && (m<0 || txMonth(t)===m))));
 }
 // collegati a rate o rateizzazioni della carta: si eliminano dalla loro sezione, non in blocco
 const mxBloccato = t => t.rid || t.pf || t.rata || t.int;
 function mxElimina(r, m, tutti){
-  const {cat, sub} = mxRighe[r], list = mxMov(r, m, tutti).filter(t=>!mxBloccato(t)), salt = mxMov(r, m, tutti).length - list.length;
+  const {cat, sub, det, fuel} = mxRighe[r], list = mxMov(r, m, tutti).filter(t=>!mxBloccato(t)), salt = mxMov(r, m, tutti).length - list.length;
   if(!list.length) return;
-  const nome = cat + (sub && sub!=='—' ? ' › '+sub : ''), dove = tutti ? 'in tutti gli anni' : m<0 ? 'nel '+ui.year : `a ${MESI[m].toLowerCase()} ${ui.year}`;
+  const nome = cat + (fuel ? ' › carburante' : '') + (sub && sub!=='—' ? ' › '+sub : '') + (det && det!=='—' ? ' › '+det : ''), dove = tutti ? 'in tutti gli anni' : m<0 ? 'nel '+ui.year : `a ${MESI[m].toLowerCase()} ${ui.year}`;
   if(!confirm(`Eliminare ${list.length} ${list.length===1?'movimento':'movimenti'} di "${nome}" ${dove}, per un totale di ${eur(sum(list.map(t=>t.amt)))}?\n\nNon si può annullare: se vuoi tenerne una copia, esporta prima un backup da Impostazioni.`)) return;
   const ids = new Set(list.map(t=>t.id));
   list.forEach(t=>applyPag(t, -1)); // come l'eliminazione singola: l'importo torna sul conto
@@ -1145,15 +1173,15 @@ function mxElimina(r, m, tutti){
   toast(`${list.length} movimenti eliminati` + (salt ? ` · ${salt} collegati a rate lasciati` : ''));
 }
 function mxCella(r, m){
-  const {cat, sub} = mxRighe[r], tipo = ui.mxTipo;
+  const {cat, sub, det, fuel} = mxRighe[r], tipo = ui.mxTipo;
   const list = mxMov(r, m, false).sort((a,b)=>b.d.localeCompare(a.d));
   const nDel = list.filter(t=>!mxBloccato(t)).length, nTutti = mxMov(r, m, true).filter(t=>!mxBloccato(t)).length;
   const oggi = today(), d = m<0 ? (ui.year===now.getFullYear() ? oggi : `${ui.year}-01-01`)
     : (ui.year===now.getFullYear() && m===now.getMonth() ? oggi : `${ui.year}-${String(m+1).padStart(2,'0')}-01`);
-  const pre = JSON.stringify({t:tipo, cat, sub: sub && sub!=='—' ? sub : '', d}).replace(/"/g,'&quot;');
-  sheet(`<h3>${esc(cat)}${sub && sub!=='—' ? ' · '+esc(sub) : ''}</h3>
+  const pre = JSON.stringify({t:tipo, cat, sub: sub && sub!=='—' ? sub : '', det: det && det!=='—' ? det : '', d}).replace(/"/g,'&quot;');
+  sheet(`<h3>${esc(cat)}${fuel ? ' · Carburante, tutti i mezzi' : ''}${sub && sub!=='—' ? ' · '+esc(sub) : ''}${det && det!=='—' ? ' · '+esc(det) : ''}</h3>
     <p class="note" style="margin:-6px 0 12px">${tipo==='u'?'Uscite':'Entrate'} · ${m<0 ? ui.year : MESI[m]+' '+ui.year} · <b class="mono" style="color:var(--ink)">${eur(sum(list.map(spesa)))}</b></p>
-    ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc(t.sub||t.cat)}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t), t.quota!=null?`gruppo: pagati ${eur(t.amt)}`:''].filter(Boolean).join(' · '))}</small></div>
+    ${list.map(t=>`<div class="tx" onclick="openTx('${t.id}')"><div class="mid"><b>${esc([t.sub||t.cat, t.det].filter(Boolean).join(' · '))}</b><small>${esc([fmtD(t.d), t.note.startsWith('Totale mensile')?'':t.note, pagLabel(t), t.quota!=null?`gruppo: pagati ${eur(t.amt)}`:''].filter(Boolean).join(' · '))}</small></div>
       <b class="mono ${t.t==='e'?'pos':''}">${t.t==='e'?'+':'-'}${eur(spesa(t))}</b></div>`).join('') || '<div class="empty">Nessun movimento.</div>'}
     <button class="btn" style="margin-top:12px" onclick="openTx('', '', ${pre})">+ Aggiungi ${tipo==='u'?'uscita':'entrata'}</button>
     ${nDel ? `<button class="btn danger" style="margin-top:8px" onclick="mxElimina(${r},${m},false)">Elimina ${nDel===1?'questo movimento':'questi '+nDel+' movimenti'}</button>` : ''}
@@ -1972,7 +2000,11 @@ function openTx(id, carta, pre){
       <div class="f"><label>Categoria</label><select id="t-c" onchange="catChange()"></select></div>
     </div>
     <div class="f" id="t-newc-w" style="display:none"><label>Nuova categoria</label><input id="t-newc" placeholder="es. Salute"></div>
-    <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Benzina Golf"><datalist id="t-sl"></datalist></div>
+    <div class="grid2">
+      <div class="f"><label>Voce (sottocategoria)</label><input id="t-s" list="t-sl" value="${esc(t.sub)}" placeholder="es. Auto" oninput="detChange()"><datalist id="t-sl"></datalist></div>
+      <div class="f"><label>Dettaglio</label><input id="t-dt" list="t-dl" value="${esc(t.det||'')}" placeholder="es. Gasolio"><datalist id="t-dl"></datalist></div>
+    </div>
+    <p class="note" id="t-mezzi" style="display:none;margin:-4px 0 12px">Le spese dei mezzi registrale nel Giornale di Bordo: arrivano qui da sole, con lo stesso dettaglio e il conto scelto lì.</p>
     <div class="f"><label>Nota</label><input id="t-n" value="${esc(t.note.startsWith('Totale mensile')?t.note:t.note)}" placeholder="facoltativa"></div>
     <div class="f" id="t-k-w" style="display:${t.t==='u'?'block':'none'}"><label id="t-k-l">${rp?'Rate pagate con':'Pagato con'}</label><select id="t-k" ${t.rid||t.pf?'disabled':''}>${pagOptions(rp ? (rp.carta ? 'k:'+rp.carta : rp.conto ? 'c:'+rp.conto : '') : id ? pagValue(t) : carta ? 'k:'+carta : ui.lastPag||'')}</select>
       ${t.pf?'<p class="note" style="margin:4px 0 0">Spesa rateizzata con la carta: per cambiarla annulla prima la rateizzazione nella sezione Carte.</p>':''}</div>
@@ -2045,14 +2077,23 @@ function fillCats(sel){
   if(sel && !m.has(sel)){ $('t-c').value='__new'; $('t-newc').value=sel; }
   catChange();
 }
+// dettagli già usati per categoria e voce (es. Mezzi › Auto › Gasolio)
+function detChange(){
+  const cat = $('t-c').value, sub = $('t-s').value.trim();
+  const d = [...new Set(S.tx.filter(t=>t.cat===cat && (t.sub||'')===sub && t.det).map(t=>t.det))].sort();
+  $('t-dl').innerHTML = d.map(x=>`<option value="${esc(x)}">`).join('');
+}
 function catChange(){
   const v=$('t-c').value; $('t-newc-w').style.display = v==='__new'?'block':'none';
   const subs = v==='__new' ? [] : [...(catMap($('t-t').value).get(v)||[])].sort();
   $('t-sl').innerHTML = subs.map(s=>`<option value="${esc(s)}">`).join('');
+  $('t-mezzi').style.display = $('t-t').value==='u' && /^mezzi$/i.test(v) && bordo.stato==='ok' ? 'block' : 'none';
+  detChange();
 }
 function saveTx(id){
   const o = { t:$('t-t').value, amt:num($('t-a').value), d:$('t-d').value,
-    cat: $('t-c').value==='__new' ? $('t-newc').value.trim() : $('t-c').value, sub:$('t-s').value.trim(), note:$('t-n').value.trim() };
+    cat: $('t-c').value==='__new' ? $('t-newc').value.trim() : $('t-c').value, sub:$('t-s').value.trim(), det:$('t-dt').value.trim(), note:$('t-n').value.trim() };
+  if(!o.det) delete o.det;
   if(!o.amt) return toast('Inserisci un importo');
   if(!o.cat) return toast('Scegli una categoria');
   if(!o.d) return toast('Inserisci la data');
@@ -2087,7 +2128,7 @@ function saveTx(id){
   if(old && old.pf){ const f=carte().flatMap(c=>c.flex||[]).find(f=>f.id===old.pf); if(f && o.amt!==old.amt){ if(f.done) return toast('Rateizzazione già in corso: l\'importo non si può cambiare'); f.imp=o.amt; } }
   // carta di debito / conto / contanti: l'importo esce subito dal conto (prima tolgo l'effetto della versione vecchia)
   if(old) applyPag(old, -1);
-  if(old){ Object.assign(old,o); if(!gruppo) delete old.quota; } else S.tx.push({id:uid(),...o});
+  if(old){ Object.assign(old,o); if(!gruppo) delete old.quota; if(!o.det) delete old.det; } else S.tx.push({id:uid(),...o});
   const tx = old || S.tx[S.tx.length-1];
   applyPag(tx);
   if(o.t==='u' && !(old && (old.rid || old.pf))) ui.lastPag = $('t-k').value;
@@ -2164,15 +2205,21 @@ const BORDO_FONTI = [ // [chiave, mezzo, cosa]
    Quelli con data prima di pagDal (il passato, già nei saldi) non toccano i conti; dopo, si pagano con `pag`.
    Cambiati o eliminati nel Giornale si aggiornano qui finché non li modifichi in Bilancio; eliminati qui non tornano (fatti). */
 // per mezzo: elenco spese (dove il Giornale fa i suoi totali e tiene la spunta "da non conteggiare / fatta da altri"),
-// sottocategoria della benzina, e le schede collegate via expenseId (rifornimenti, bolli, assicurazioni, revisioni) col loro mezzo
+// voce in Bilancio (Mezzi › Auto / SH / Moto / Gommone), le schede collegate via expenseId (rifornimenti, bolli, assicurazioni,
+// revisioni) col loro mezzo, e da categoria del Giornale a dettaglio (Mezzi › Auto › Gasolio). Le categorie che non si scelgono
+// più nel Giornale vanno nel dettaglio più vicino.
+const DET_SH = {carburante:'Benzina', manutenzione:'Manutenzione ordinaria', manutenzione_str:'Manutenzione straordinaria', tagliando:'Tagliando',
+  revisione:'Revisione', assicurazione:'Assicurazione', bollo:'Bollo', ricambi:'Manutenzione ordinaria', acquisto:'Acquisti', documenti:'Spese varie', altro:'Spese varie'};
 const BORDO_IMP = [
-  ...['auto','scooter','moto'].map((m,i)=>({ek:m+'_expenses', mezzo:m, benzina:['Benzina Golf','Benzina SH','Benzina Moto'][i],
+  ...[['auto','Auto'],['scooter','SH'],['moto','Moto']].map(([m,voce])=>({ek:m+'_expenses', mezzo:m, voce,
+    det: m==='auto' ? {...DET_SH, carburante:'Gasolio'} : DET_SH,
     link:{[m+'_refuels']:m, [m+'_bollo']:m, [m+'_insurances']:m, [m+'_revisioni']:m}})),
-  {ek:'expenses', mezzo:'gommone', benzina:'Benzina Gommone',
+  {ek:'expenses', mezzo:'gommone', voce:'Gommone',
+    det:{acquisto:'Acquisti', carburante:'Benzina', ormeggio:'Ormeggio', manutenzione:'Manutenzione straordinaria', lavori:'Lavori',
+      assicurazione:'Assicurazione', bollo:'Bollo', rimessaggio:'Ormeggio', dotazioni:'Acquisti', ricambi:'Manutenzione straordinaria',
+      spese_carrello:'Lavori', revisione:'Revisione', documenti:'Spese varie', altro:'Spese varie'},
     link:{refuels:'gommone', insurances:'gommone', carrelloInsurances:'carrello', carrelloRevisioni:'carrello', carrelloBollo:'carrello'}}];
-// categorie del Giornale importate → sottocategoria in Mezzi (carburante: quella del mezzo)
-const BORDO_CAT = {carburante:'', bollo:'Bolli', assicurazione:'Assicurazioni', revisione:'Revisioni', acquisto:'Acquisti', altro:'Spese varie'};
-const BORDO_CHIAVI = [...new Set([...BORDO_FONTI.map(x=>x[0]), ...BORDO_IMP.flatMap(x=>[x.ek, ...Object.keys(x.link)])])];
+const BORDO_CHIAVI = [...new Set([...BORDO_FONTI.map(x=>x[0]), ...BORDO_IMP.flatMap(x=>[x.ek, ...Object.keys(x.link)]), 'bilancioPagamenti'])];
 const bordo = {stato:'off', voci:[], imp:[], err:'', email:'', agg:0};
 let bordoApp = null, bordoBoxH = '';
 const bordoOn = () => { try{ return localStorage.getItem('bilancio:bordo')==='1'; }catch(e){ return false; } };
@@ -2188,8 +2235,8 @@ function bordoVoci(dati){
 }
 function bordoImpVoci(dati){
   const out = [], lista = k => Array.isArray(dati[k]) ? dati[k] : [];
-  BORDO_IMP.forEach(({ek, mezzo, benzina, link})=>lista(ek).forEach(e=>{
-    if(!e || e.excluded || !e.date || !(e.amount>0) || !(e.category in BORDO_CAT)) return;
+  BORDO_IMP.forEach(({ek, mezzo, voce, det, link})=>lista(ek).forEach(e=>{
+    if(!e || e.excluded || !e.date || !(e.amount>0)) return;
     // scheda collegata (rifornimento, bollo, assicurazione, revisione): dà il mezzo giusto (gommone o carrello) e i dettagli
     const lk = Object.keys(link).find(k=>lista(k).some(x=>x.expenseId===e.id)), r = lk && lista(lk).find(x=>x.expenseId===e.id), m = lk ? link[lk] : mezzo;
     const scad = r && r.scadenza ? 'scadenza '+fmtD(r.scadenza) : '';
@@ -2201,7 +2248,10 @@ function bordoImpVoci(dati){
     else if(e.category==='assicurazione') note = [`Assicurazione ${m}`, r && r.compagnia, scad];
     else if(e.category==='revisione') note = [`Revisione ${m}`, r && r.compagnia, scad];
     else note = [e.note || (e.category==='acquisto' ? 'Acquisto' : 'Spesa'), m];
-    out.push({id:`bf_${ek}:${e.id}`, old: r ? `bf_${lk}:${r.id}` : null, sub: BORDO_CAT[e.category] || benzina, d:e.date, amt:round2(e.amount), note:note.filter(Boolean).join(' · ')});
+    // metodo scelto nel Giornale (id dei conti/carte di Bilancio) e pagamento a rate
+    const rate = e.installments && e.installmentCount>1 ? {n:e.installmentCount, rata:e.installmentAmount || round2(e.amount/e.installmentCount), tipo:e.installmentService || 'Rate'} : null;
+    out.push({id:`bf_${ek}:${e.id}`, old: r ? `bf_${lk}:${r.id}` : null, sub:voce, det: det[e.category] || e.category.charAt(0).toUpperCase()+e.category.slice(1).replace(/_/g,' '),
+      d:e.date, amt:round2(e.amount), note:note.filter(Boolean).join(' · '), pagId: e.pagId && e.pagId.includes(':') ? e.pagId : null, rate});
   }));
   return out;
 }
@@ -2222,27 +2272,55 @@ function bordoImporta(){
     const t = S.tx.find(x=>x.id===v.old); if(t && !S.tx.some(x=>x.id===v.id)){ t.id = v.id; rinomina++; }
     if(o.fatti.includes(v.old)){ o.fatti = o.fatti.map(f=>f===v.old ? v.id : f); rinomina++; } });
   const mio = t => t.amt===t.bfAmt && t.d===t.bfD && !estrattoChiuso(t); // non toccato in Bilancio
-  let nuovi = 0, cambi = 0;
+  // da dove escono i soldi: spese passate (prima di pagDal) già nei saldi; nuove col metodo scelto nel Giornale, o quello predefinito
+  const pagDi = v => pagParse(v.d >= o.pagDal ? v.pagId || o.pag || '' : '');
+  let nuovi = 0, cambi = 0, piani = 0;
   // solo le spese già fatte: una con data futura nel Giornale arriva il giorno della sua data
   const oggi = today(), fatte = bordo.imp.filter(v=>v.d >= o.dal && v.d <= oggi);
   fatte.forEach(v=>{
     const t = S.tx.find(x=>x.id===v.id);
     if(!t){
       if(o.fatti.includes(v.id)) return;
-      const n = {id:v.id, d:v.d, t:'u', cat:'Mezzi', sub:v.sub, amt:v.amt, note:v.note, bf:1, bfAmt:v.amt, bfD:v.d, ...pagParse(v.d >= o.pagDal ? o.pag||'' : '')};
+      const n = {id:v.id, d:v.d, t:'u', cat:'Mezzi', sub:v.sub, det:v.det, amt:v.amt, note:v.note, bf:1, bfAmt:v.amt, bfD:v.d, ...pagDi(v)};
+      // nuova e a rate nel Giornale: l'acquisto non muove soldi, li muovono le rate dal conto/carta di "Pagato con"
+      if(v.rate && v.d >= o.pagDal){
+        const pr = pagDi(v), rid = uid();
+        S.rate.push({id:rid, tipo:v.rate.tipo, prod:[v.sub, v.det].join(' · '), acq:v.d, n:v.rate.n, rata:v.rate.rata, tot:round2(v.rate.rata*v.rate.n), imp:v.amt,
+          first:addMonths(v.d,1), pre:0, done:0, fi:0, conto:pr.conto, carta:pr.carta, tx:v.id});
+        Object.assign(n, {carta:'', pag:'', conto:'', rata:rid}); addServizio(v.rate.tipo); piani++;
+      }
       S.tx.push(n); applyPag(n); o.fatti.push(v.id); nuovi++;
-    } else if(mio(t) && (t.amt!==v.amt || t.d!==v.d)){ applyPag(t,-1); Object.assign(t, {amt:v.amt, d:v.d, bfAmt:v.amt, bfD:v.d, note:v.note}); applyPag(t); cambi++; }
+    } else {
+      // struttura sempre allineata al Giornale (voce, dettaglio, nota); importo, data e conto finché non li cambi qui
+      if(t.cat!=='Mezzi' || t.sub!==v.sub || t.det!==v.det || t.note!==v.note){ Object.assign(t, {cat:'Mezzi', sub:v.sub, det:v.det, note:v.note}); cambi++; }
+      const pg = pagDi(v);
+      if(mio(t) && (t.amt!==v.amt || t.d!==v.d || (!t.rata && (t.carta!==pg.carta || t.pag!==pg.pag || t.conto!==pg.conto)))){
+        applyPag(t,-1); Object.assign(t, {amt:v.amt, d:v.d, bfAmt:v.amt, bfD:v.d}, t.rata ? {} : pg); applyPag(t); cambi++;
+      }
+    }
   });
+  if(piani) payDueRate();
   // eliminati (o esclusi) nel Giornale: via anche qui, se non li hai modificati
-  const vivi = new Set(fatte.map(v=>v.id)), via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t));
-  via.forEach(t=>applyPag(t,-1));
+  const vivi = new Set(fatte.map(v=>v.id));
+  // a rate con rate già pagate: resta (si sistema dalla sezione Rate)
+  const via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t) && !(t.rata && (S.rate.find(r=>r.id===t.rata)||{}).done));
+  via.forEach(t=>{ applyPag(t,-1); if(t.rata) S.rate = S.rate.filter(r=>r.id!==t.rata); });
   // tolte per il Giornale (non da te): se ricompaiono, si importano di nuovo
   if(via.length){ S.tx = S.tx.filter(t=>!via.includes(t)); o.fatti = o.fatti.filter(id=>!via.some(t=>t.id===id)); }
   if(nuovi || cambi || via.length || rinomina || prima.length){ save(); if(nuovi) toast(nuovi===1 ? '1 spesa importata dal Giornale di Bordo' : `${nuovi} spese importate dal Giornale di Bordo`); }
   return nuovi + cambi + via.length;
 }
-// spese dei mezzi già registrate a mano (o da Numbers) nello stesso periodo: si conterebbero due volte
-const bordoDoppi = () => { const o = S.opz.bordoImp; return o ? S.tx.filter(t=>t.t==='u' && !t.bf && t.d>=o.dal && /^mezzi$/i.test(t.cat) && /benzina|bollo|bolli|assicuraz|revision|acquist|spese varie/i.test(t.sub||'')) : []; };
+// spese dei mezzi registrate a mano (o da Numbers) nello stesso periodo: si conterebbero due volte
+const bordoDoppi = () => { const o = S.opz.bordoImp; return o ? S.tx.filter(t=>t.t==='u' && !t.bf && !t.rid && t.d>=o.dal && /^mezzi$/i.test(t.cat)) : []; };
+// i metodi di pagamento di Bilancio, per il "Pagato con" del Giornale: solo i nomi, mai saldi
+function bordoPagamenti(){
+  const banche = S.conti.filter(c=>c.g==='Banche'), cash = S.conti.filter(c=>c.g==='Cash');
+  return {pagamenti:[
+    ...carte().map(k=>({id:'k:'+k.id, label:'Carta di credito '+k.n, g:'Carte di credito'})),
+    ...banche.map(c=>({id:'d:'+c.id, label:debitoName(c), g:'Carte di debito e prepagate'})),
+    ...banche.map(c=>({id:'c:'+c.id, label:'Conto '+c.n, g:'Dal conto (bonifico, bollettino…)'})),
+    ...cash.map(c=>({id:'x:'+c.id, label:'Contanti · '+c.n, g:'Contanti'}))], servizi:servizi()};
+}
 function bordoImpOpz(){
   const o = S.opz.bordoImp, pag = $('bd-ip').value;
   if(pag!==o.pag){ o.pag = pag; o.pagDal = today(); }
@@ -2276,7 +2354,13 @@ async function bordoLeggi(){
     const dati = {};
     docs.forEach((d,i)=>{ if(d.exists) try{ dati[BORDO_CHIAVI[i]] = JSON.parse(d.data().value); }catch(e){} });
     bordo.voci = bordoVoci(dati); bordo.imp = bordoImpVoci(dati); bordo.stato = 'ok'; bordo.agg = Date.now();
-    if(!CLOUD || cloud.key) bordoImporta();
+    if(!CLOUD || cloud.key){
+      bordoImporta();
+      // l'elenco dei conti e delle carte per il Giornale, se è cambiato
+      const pg = bordoPagamenti();
+      if(S.conti.length && JSON.stringify(pg)!==JSON.stringify(dati.bilancioPagamenti))
+        col.doc('bilancioPagamenti').set({value:JSON.stringify(pg)}).then(()=>{ bordo.pagErr=''; }).catch(e=>{ console.warn(e); bordo.pagErr = e.code||e.message; bordoAggiorna(); });
+    }
   }catch(e){ console.error(e); bordo.stato = 'err'; bordo.err = e.code==='permission-denied' ? 'accesso negato dalle regole del Giornale' : (e.code||e.message); }
   bordoAggiorna();
 }
@@ -2303,11 +2387,11 @@ function bordoBox(){
       const imp = S.tx.filter(t=>t.bf), doppi = bordoDoppi();
       return `<label class="chk" style="justify-content:flex-start;margin:12px 0 8px"><input type="checkbox" id="bd-io" ${o.on?'checked':''} onchange="bordoImpOpz()"> Importa le spese dei mezzi in Mezzi</label>
       <div style="display:${o.on?'block':'none'}">
-        <p class="note" style="margin:0 0 8px">Benzina Golf · Benzina SH · Benzina Gommone · Bolli · Assicurazioni · Revisioni · Acquisti · Spese varie (non quelle fatte da altri); le scadenze future restano promemoria. ${imp.length} spese importate (${eur(sum(imp.map(t=>t.amt)))}).</p>
+        <p class="note" style="margin:0 0 8px">Mezzi › Auto, SH, Gommone con il loro dettaglio (Gasolio, Benzina, Manutenzione, Tagliando…), non quelle fatte da altri; le scadenze future restano promemoria. Nel Giornale "Pagato con" ha i tuoi conti e le tue carte. ${imp.length} spese importate (${eur(sum(imp.map(t=>t.amt)))}).</p>
         <div class="grid2"><div class="f"><label>Importa dal</label><input type="date" id="bd-id" value="${o.dal}" onchange="bordoImpOpz()"></div>
-        <div class="f"><label>Pagate con</label><select id="bd-ip" onchange="bordoImpOpz()">${pagOptions(o.pag||'')}</select></div></div>
+        <div class="f"><label>Senza metodo nel Giornale</label><select id="bd-ip" onchange="bordoImpOpz()">${pagOptions(o.pag||'')}</select></div></div>
         <p class="note" style="margin:-4px 0 0">Quelle prima del ${fmtD(o.pagDal)} non toccano i conti (sono già nei saldi).</p>
-        ${doppi.length ? `<p class="note neg" style="margin:8px 0 0">Attenzione: in Mezzi ci sono già ${doppi.length} spese di questo tipo dal ${fmtD(o.dal)} registrate a mano (${eur(sum(doppi.map(t=>t.amt)))}): si contano due volte. Eliminale dal Mensile (Mezzi › la voce › Elimina).</p>` : ''}
+        ${doppi.length ? `<p class="note neg" style="margin:8px 0 0">Attenzione: in Mezzi ci sono ${doppi.length} spese registrate a mano dal ${fmtD(o.dal)} registrate a mano (${eur(sum(doppi.map(t=>t.amt)))}): si contano due volte. Eliminale dal Mensile (Mezzi › la voce › Elimina).</p>` : ''}
       </div>`; })()}
     <div class="grid2" style="margin-top:10px"><button class="btn ghost" onclick="bordoLeggi()">Aggiorna</button><button class="btn ghost" onclick="bordoScollega()">Scollega</button></div>`;
   if(bordo.stato==='carico') return `<p class="note">Leggo le scadenze dal Giornale di Bordo…</p>`;
