@@ -2160,6 +2160,7 @@ const BORDO_FONTI = [ // [chiave, mezzo, cosa]
   ['insurances','gommone','Assicurazione'], ['carrelloInsurances','carrello','Assicurazione'], ['carrelloBollo','carrello','Bollo'], ['carrelloRevisioni','carrello','Revisione']];
 /* Importazione in Mezzi: spese di carburante (Benzina Golf / SH / Gommone), bolli, assicurazioni, revisioni, acquisti e altro (Spese varie), dal 1° gennaio dell'anno
    in cui è stata attivata. S.opz.bordoImp = {on, dal, pag, pagDal, fatti:[id]}: movimento id 'bf_<chiave>:<id>', con bf/bfAmt/bfD.
+   Solo spese già fatte (data fino a oggi): le scadenze future restano promemoria in Da pagare, non uscite.
    Quelli con data prima di pagDal (il passato, già nei saldi) non toccano i conti; dopo, si pagano con `pag`.
    Cambiati o eliminati nel Giornale si aggiornano qui finché non li modifichi in Bilancio; eliminati qui non tornano (fatti). */
 // per mezzo: elenco spese (dove il Giornale fa i suoi totali e tiene la spunta "da non conteggiare / fatta da altri"),
@@ -2217,8 +2218,9 @@ function bordoImporta(){
     if(o.fatti.includes(v.old)){ o.fatti = o.fatti.map(f=>f===v.old ? v.id : f); rinomina++; } });
   const mio = t => t.amt===t.bfAmt && t.d===t.bfD && !estrattoChiuso(t); // non toccato in Bilancio
   let nuovi = 0, cambi = 0;
-  bordo.imp.forEach(v=>{
-    if(v.d < o.dal) return;
+  // solo le spese già fatte: una con data futura nel Giornale arriva il giorno della sua data
+  const oggi = today(), fatte = bordo.imp.filter(v=>v.d >= o.dal && v.d <= oggi);
+  fatte.forEach(v=>{
     const t = S.tx.find(x=>x.id===v.id);
     if(!t){
       if(o.fatti.includes(v.id)) return;
@@ -2227,7 +2229,7 @@ function bordoImporta(){
     } else if(mio(t) && (t.amt!==v.amt || t.d!==v.d)){ applyPag(t,-1); Object.assign(t, {amt:v.amt, d:v.d, bfAmt:v.amt, bfD:v.d, note:v.note}); applyPag(t); cambi++; }
   });
   // eliminati (o esclusi) nel Giornale: via anche qui, se non li hai modificati
-  const vivi = new Set(bordo.imp.map(v=>v.id)), via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t));
+  const vivi = new Set(fatte.map(v=>v.id)), via = S.tx.filter(t=>t.bf && !vivi.has(t.id) && mio(t));
   via.forEach(t=>applyPag(t,-1));
   // tolte per il Giornale (non da te): se ricompaiono, si importano di nuovo
   if(via.length){ S.tx = S.tx.filter(t=>!via.includes(t)); o.fatti = o.fatti.filter(id=>!via.some(t=>t.id===id)); }
